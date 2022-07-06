@@ -112,7 +112,17 @@ function fillMissingDays() {
 }
 
 function main() {
-	for (year of [2021]) {
+	let years_string = process.argv[2];
+
+	if (!years_string) {
+		console.error("ERROR: Please tell me which year(s) you want to parse.")
+		return
+	}
+
+	let years = years_string.split(",");
+
+	for (year of years) {
+		year = parseInt(year);
 		parseYear(year)
 	}
 
