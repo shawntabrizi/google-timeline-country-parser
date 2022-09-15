@@ -1,5 +1,6 @@
 const fs = require('fs');
 const crg = require('country-reverse-geocoding').country_reverse_geocoding();
+const { get_custom_country } = require('./custom_locations');
 
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
@@ -8,6 +9,11 @@ const BASE_LOCATION = "./Takeout/Location History/Semantic Location History";
 
 // This will be a history of days -> location
 let history = {};
+
+// Return today's date, in YYYY-MM-DD format
+function today() {
+	return (new Date()).toISOString().slice(0, 10);
+}
 
 // Here we can fill the history with every day in the year,
 // so we can catch the days there is no information.
@@ -21,33 +27,33 @@ function getAllDaysOfYear(year) {
 	}
 }
 
-// Given a date, lat, and lon, insert the date and location into history.
+// Given a date, lat, and lng, insert the date and location into history.
 // Does some special handling for Puerto Rico locations which are unknown.
-function insertHistory(date, lat, lon, expected_year) {
+function insertHistory(date, lat, lng, expected_year) {
 	if (date.slice(0, 4) != expected_year) { return; }
 
 	// This represents if something in the list isn't known for sure.
 	let guess = false;
 
-	// Google uses lat and lon multiplied by 10^7
+	// Google uses lat and lng multiplied by 10^7
 	let e7 = 10000000;
 	lat = lat / e7;
-	lon = lon / e7;
+	lng = lng / e7;
 
-	let country = crg.get_country(lat, lon)
+	let country = crg.get_country(lat, lng)
+
 	if (country) {
 		country = country.name;
 	} else {
-		// Pretty sure this is Culebra.
-		if (lat > 18 && lat < 18.5 && lon > -66.1 && lon < -65) {
-			country = "Puerto Rico";
-			guess = true;
-		} else {
-			country = "Unknown";
-		}
+		country = get_custom_country(lat, lng);
+		guess = true;
 	}
 
-	let record = { date, country, lat, lon, guess };
+	if (!country) {
+		country = "Unknown";
+	}
+
+	let record = { date, country, lat, lng, guess };
 	history[date] = record;
 }
 
@@ -72,42 +78,48 @@ function parseYear(year) {
 			if (object.hasOwnProperty("placeVisit")) {
 				let place = object.placeVisit;
 				let lat = place.location.latitudeE7;
-				let lon = place.location.longitudeE7;
+				let lng = place.location.longitudeE7;
 
 				let start_date = place.duration.startTimestamp.slice(0, 10);
-				insertHistory(start_date, lat, lon, year);
+				insertHistory(start_date, lat, lng, year);
 
 				let end_date = place.duration.endTimestamp.slice(0, 10);
-				insertHistory(end_date, lat, lon, year);
+				insertHistory(end_date, lat, lng, year);
 			} else {
 				let activity = object.activitySegment;
 				let start_date = activity.duration.startTimestamp.slice(0, 10);
 				let start_lat = activity.startLocation.latitudeE7;
-				let start_lon = activity.startLocation.longitudeE7;
-				insertHistory(start_date, start_lat, start_lon, year);
+				let start_lng = activity.startLocation.longitudeE7;
+				insertHistory(start_date, start_lat, start_lng, year);
 
 				let end_date = activity.duration.endTimestamp.slice(0, 10);
 				let end_lat = activity.endLocation.latitudeE7;
-				let end_lon = activity.endLocation.longitudeE7;
-				insertHistory(end_date, end_lat, end_lon, year);
+				let end_lng = activity.endLocation.longitudeE7;
+				insertHistory(end_date, end_lat, end_lng, year);
 			}
 		}
 	}
 }
 
-// If you don't move much, google wont track any `timelineObjects`. So instead
-// we will assume you are in the last spot you were tracked.
+// This logic handles what to do with days which did not generate a history.
 //
-// All of these days will have `guess = true`.
-function fillMissingDays() {
+// If you don't move much, google wont track any `timelineObjects`. So instead
+// we will assume you are in the last spot you were tracked. All of these days
+// will have `guess = true`.
+//
+// Days which have not yet happened will be removed from the list.
+function handleMissingDays() {
 	let lastDay = Object.values(history)[0];
 	for (const [day, value] of Object.entries(history)) {
-		if (value == null && lastDay != null) {
-			history[day] = lastDay;
-			history[day].guess = true;
+		if (day > today()) {
+			delete history[day];
+		} else {
+			if (value == null && lastDay != null) {
+				history[day] = lastDay;
+				history[day].guess = true;
+			}
+			lastDay = history[day];
 		}
-
-		lastDay = history[day];
 	}
 }
 
@@ -126,7 +138,7 @@ function main() {
 		parseYear(year)
 	}
 
-	fillMissingDays();
+	handleMissingDays();
 
 	let counter = {};
 	for (const [day, value] of Object.entries(history)) {
