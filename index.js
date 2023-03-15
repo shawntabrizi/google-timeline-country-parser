@@ -1,8 +1,10 @@
 const fs = require('fs');
 const coordinate_to_code = require("coordinate_to_country");
 const code_to_country = require('country-code-lookup');
+const ns = require('nanospinner');
 const preferred_country = null;
 
+const SPINNER = ns.createSpinner(`Processing your Google history...`).start();
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
 // Copy the google timeline folder to this project directory.
@@ -33,6 +35,9 @@ function getAllDaysOfYear(year) {
 function insertHistory(date, lat, lng, expected_year) {
 	if (date.slice(0, 4) != expected_year) { return; }
 
+	SPINNER.update({ text: `Processing: ${date}` });
+	SPINNER.spin();
+
 	// This represents if something in the list isn't known for sure.
 	let guess = false;
 
@@ -42,15 +47,18 @@ function insertHistory(date, lat, lng, expected_year) {
 	lng = lng / e7;
 
 	const code = coordinate_to_code(lat, lng);
-	// Multiple countries may be returned, in cases like Puerto Rico: `[ 'USA', 'PRI' ]`
-	// We take the last one by default.
-	let country_object = code_to_country.byIso(code.pop());
+	let country_object = null;
+	if (code.length > 0) {
+		// Multiple countries may be returned, in cases like Puerto Rico: `[ 'USA', 'PRI' ]`
+		// We take the last one by default.
+		country_object = code_to_country.byIso(code.pop());
+	}
 
 	let country;
-	if (!country_object) {
-		country = "Unknown";
-	} else {
+	if (country_object) {
 		country = country_object.country;
+	} else {
+		country = "Unknown";
 	}
 
 	let record = { date, country, lat, lng, guess };
@@ -58,8 +66,8 @@ function insertHistory(date, lat, lng, expected_year) {
 	if (preferred_country && preferred_country != record.country) {
 		if (history[date] && history[date].country == preferred_country) {
 			// If there is already some history in the preferred country,
-			// do not overwrite it with non-preferred countries.
-			console.log(`preferred country override: ${date}`);
+			// do not overwrite it with non-preferred countries. This is a guess.
+			history[date].guess = true;
 			return;
 		}
 	}
@@ -147,21 +155,21 @@ function main() {
 		year = parseInt(year);
 		parseYear(year)
 	}
+	SPINNER.success({ text: "Processing Complete!" });
 
 	handleMissingDays();
 
 	let country_counter = {};
-	let missing_counter = 0;
-	let guess_counter = 0;
+	let missing = [];
+	let guessed = [];
 
 	for (const [day, value] of Object.entries(history)) {
 		if (value == null) {
-			console.log(`Missing: ${day}`);
-			missing_counter += 1;
+			missing.push(day);
 			continue;
 		}
 		if (value.guess) {
-			guess_counter += 1;
+			guessed.push(day);
 		}
 		if (country_counter[value.country]) {
 			country_counter[value.country] += 1;
@@ -170,7 +178,11 @@ function main() {
 		}
 	}
 	console.log(country_counter);
-	console.log(`Total Days: ${Object.keys(history).length}, Guessed: ${guess_counter}, Missing: ${missing_counter}`);
+	console.log({
+		days_in_year: Object.keys(history).length,
+		days_missing: missing.length,
+		days_guessed: guessed.length,
+	});
 
 	let output = JSON.stringify(history, null, 2);
 

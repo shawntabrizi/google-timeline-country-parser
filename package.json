@@ -6,7 +6,8 @@
   "license": "MIT",
   "dependencies": {
     "coordinate_to_country": "^1.1.0",
-    "country-code-lookup": "^0.0.22"
+    "country-code-lookup": "^0.0.22",
+    "nanospinner": "^1.1.0"
   },
   "scripts": {
     "start": "node index.js"
