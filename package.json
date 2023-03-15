@@ -1,11 +1,12 @@
 {
   "name": "google-timeline-country-parser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.js",
   "author": "Shawn Tabrizi <shawntabrizi@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "country-reverse-geocoding": "^0.2.2"
+    "coordinate_to_country": "^1.1.0",
+    "country-code-lookup": "^0.0.22"
   },
   "scripts": {
     "start": "node index.js"

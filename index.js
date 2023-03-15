@@ -1,6 +1,7 @@
 const fs = require('fs');
-const crg = require('country-reverse-geocoding').country_reverse_geocoding();
-const { get_custom_country } = require('./custom_locations');
+const coordinate_to_code = require("coordinate_to_country");
+const code_to_country = require('country-code-lookup');
+const preferred_country = null;
 
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
@@ -40,20 +41,29 @@ function insertHistory(date, lat, lng, expected_year) {
 	lat = lat / e7;
 	lng = lng / e7;
 
-	let country = crg.get_country(lat, lng)
+	const code = coordinate_to_code(lat, lng);
+	// Multiple countries may be returned, in cases like Puerto Rico: `[ 'USA', 'PRI' ]`
+	// We take the last one by default.
+	let country_object = code_to_country.byIso(code.pop());
 
-	if (country) {
-		country = country.name;
-	} else {
-		country = get_custom_country(lat, lng);
-		guess = true;
-	}
-
-	if (!country) {
+	let country;
+	if (!country_object) {
 		country = "Unknown";
+	} else {
+		country = country_object.country;
 	}
 
 	let record = { date, country, lat, lng, guess };
+
+	if (preferred_country && preferred_country != record.country) {
+		if (history[date] && history[date].country == preferred_country) {
+			// If there is already some history in the preferred country,
+			// do not overwrite it with non-preferred countries.
+			console.log(`preferred country override: ${date}`);
+			return;
+		}
+	}
+
 	history[date] = record;
 }
 
