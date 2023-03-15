@@ -1,10 +1,10 @@
 const fs = require('fs');
 const coordinate_to_code = require("coordinate_to_country");
 const code_to_country = require('country-code-lookup');
-const ns = require('nanospinner');
+const nanospinner = require('nanospinner');
 const preferred_country = null;
 
-const SPINNER = ns.createSpinner(`Processing your Google history...`).start();
+const SPINNER = nanospinner.createSpinner(`Processing your Google history...`).start();
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
 // Copy the google timeline folder to this project directory.
@@ -34,6 +34,7 @@ function getAllDaysOfYear(year) {
 // Does some special handling for Puerto Rico locations which are unknown.
 function insertHistory(date, lat, lng, expected_year) {
 	if (date.slice(0, 4) != expected_year) { return; }
+	if (lat == null || lng == null) { return; }
 
 	SPINNER.update({ text: `Processing: ${date}` });
 	SPINNER.spin();
@@ -79,7 +80,7 @@ function insertHistory(date, lat, lng, expected_year) {
 function parseYear(year) {
 	getAllDaysOfYear(year);
 
-	for (month of MONTHS) {
+	for (const month of MONTHS) {
 		let file_path = `${BASE_LOCATION}/${year}/${year}_${month}.json`;
 		if (!fs.existsSync(file_path)) { continue; }
 
@@ -141,6 +142,26 @@ function handleMissingDays() {
 	}
 }
 
+// Converts a string representing a range of years: "2014,2016-2018,2022"
+// into an array containing all the implied years: `[2014, 2016, 2017, 2018, 2022]`
+function parseYears(yearsString) {
+	const yearRanges = yearsString.split(',');
+	const years = [];
+
+	for (const range of yearRanges) {
+		if (range.includes('-')) {
+			const [startYear, endYear] = range.split('-').map(Number);
+			for (let year = startYear; year <= endYear; year++) {
+				years.push(year);
+			}
+		} else {
+			years.push(Number(range));
+		}
+	}
+
+	return years;
+}
+
 function main() {
 	let years_string = process.argv[2];
 
@@ -149,10 +170,9 @@ function main() {
 		return
 	}
 
-	let years = years_string.split(",");
+	let years = parseYears(years_string);
 
-	for (year of years) {
-		year = parseInt(year);
+	for (const year of years) {
 		parseYear(year)
 	}
 	SPINNER.success({ text: "Processing Complete!" });
