@@ -125,7 +125,7 @@ function handleMissingDays() {
 			delete history[day];
 		} else {
 			if (value == null && lastDay != null) {
-				history[day] = lastDay;
+				history[day] = { ...lastDay };
 				history[day].guess = true;
 			}
 			lastDay = history[day];
@@ -150,20 +150,27 @@ function main() {
 
 	handleMissingDays();
 
-	let counter = {};
+	let country_counter = {};
+	let missing_counter = 0;
+	let guess_counter = 0;
+
 	for (const [day, value] of Object.entries(history)) {
 		if (value == null) {
 			console.log(`Missing: ${day}`);
+			missing_counter += 1;
 			continue;
 		}
-		if (counter[value.country]) {
-			counter[value.country] += 1;
+		if (value.guess) {
+			guess_counter += 1;
+		}
+		if (country_counter[value.country]) {
+			country_counter[value.country] += 1;
 		} else {
-			counter[value.country] = 1;
+			country_counter[value.country] = 1;
 		}
 	}
-	console.log(counter);
-	console.log(`Total Days: ${Object.keys(history).length}`);
+	console.log(country_counter);
+	console.log(`Total Days: ${Object.keys(history).length}, Guessed: ${guess_counter}, Missing: ${missing_counter}`);
 
 	let output = JSON.stringify(history, null, 2);
 
