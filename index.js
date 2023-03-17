@@ -180,10 +180,17 @@ function main() {
 	handleMissingDays();
 
 	let country_counter = {};
+	if (years.length > 1) {
+		country_counter["total"] = {};
+	}
+	for (const year of years) {
+		country_counter[year] = {};
+	}
 	let missing = [];
 	let guessed = [];
 
 	for (const [day, value] of Object.entries(history)) {
+		let year = day.slice(0, 4);
 		if (value == null) {
 			missing.push(day);
 			continue;
@@ -191,10 +198,18 @@ function main() {
 		if (value.guess) {
 			guessed.push(day);
 		}
-		if (country_counter[value.country]) {
-			country_counter[value.country] += 1;
+		if (years.length > 1) {
+			if (country_counter["total"][value.country]) {
+				country_counter["total"][value.country] += 1;
+			} else {
+				country_counter["total"][value.country] = 1;
+			}
+		}
+
+		if (country_counter[year][value.country]) {
+			country_counter[year][value.country] += 1;
 		} else {
-			country_counter[value.country] = 1;
+			country_counter[year][value.country] = 1;
 		}
 	}
 	console.log(country_counter);
