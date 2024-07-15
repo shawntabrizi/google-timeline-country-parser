@@ -8,7 +8,7 @@ const SPINNER = nanospinner.createSpinner(`Processing your Google history...`).s
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
 // Copy the google timeline folder to this project directory.
-const BASE_LOCATION = "./Takeout/Location History/Semantic Location History";
+const BASE_LOCATION = "./Takeout/Location History (Timeline)/Semantic Location History";
 
 // This will be a history of days -> location
 let history = {};
