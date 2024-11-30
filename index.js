@@ -12,6 +12,7 @@ const BASE_LOCATION = "./Takeout/Location History (Timeline)/Semantic Location H
 const program = new Command();
 program
 	.requiredOption("-y, --years <years>", "Comma-separated list of years or ranges (e.g., '2014,2016-2018')")
+	.option("-i, --input <file>", "Input file name", "Timeline.json")
 	.option("-o, --output <file>", "Output file name", "output.json")
 	.option("-p, --preferred-country <country>", "Preferred country to prioritize when handling ambiguous locations");
 
@@ -78,14 +79,10 @@ function parseLatLng(latLngStr) {
 }
 
 // Main function. Parses all the location history for a year.
-function parseYear(year) {
+function parseYear(timeline, year) {
 	getAllDaysOfYear(year);
 
-	let file_path = `Timeline.json`;
-	let rawdata = fs.readFileSync(file_path);
-	let locations = JSON.parse(rawdata);
-
-	for (const object of locations.semanticSegments) {
+	for (const object of timeline.semanticSegments) {
 		// Google has two types of timeline objects:
 		// 1. visit
 		// 2. activity
@@ -158,8 +155,11 @@ function parseYears(yearsString) {
 function main() {
 	const years = parseYears(options.years);
 
+	let rawdata = fs.readFileSync(options.input);
+	let timeline = JSON.parse(rawdata);
+
 	for (const year of years) {
-		parseYear(year);
+		parseYear(timeline, year);
 	}
 	SPINNER.success({ text: "Processing Complete!" });
 
