@@ -33,6 +33,8 @@ function getAllDaysOfYear(year) {
 // Given a date, lat, and lng, insert the date and location into history.
 // Does some special handling for Puerto Rico locations which are unknown.
 function insertHistory(date, lat, lng, expected_year) {
+
+	console.log({ date, lat, lng, expected_year})
 	if (date.slice(0, 4) != expected_year) { return; }
 	if (lat == null || lng == null) { return; }
 
@@ -41,11 +43,6 @@ function insertHistory(date, lat, lng, expected_year) {
 
 	// This represents if something in the list isn't known for sure.
 	let guess = false;
-
-	// Google uses lat and lng multiplied by 10^7
-	let e7 = 10000000;
-	lat = lat / e7;
-	lng = lng / e7;
 
 	const code = coordinate_to_code(lat, lng);
 	let country_object = null;
@@ -76,48 +73,56 @@ function insertHistory(date, lat, lng, expected_year) {
 	history[date] = record;
 }
 
+function parseLatLng(latLngStr) {
+	// Split the string into latitude and longitude
+	const [latStr, lngStr] = latLngStr.split(', ');
+
+	// Parse latitude and longitude into numbers
+	const lat = parseFloat(latStr.replace('°', '').trim());
+	const lng = parseFloat(lngStr.replace('°', '').trim());
+
+	return { lat, lng };
+}
+
 // Main function. Parses all the location history for a year.
 function parseYear(year) {
 	getAllDaysOfYear(year);
 
-	for (const month of MONTHS) {
-		let file_path = `${BASE_LOCATION}/${year}/${year}_${month}.json`;
-		if (!fs.existsSync(file_path)) { continue; }
+		let file_path = `Timeline.json`;
 
 		let rawdata = fs.readFileSync(file_path);
 		let locations = JSON.parse(rawdata);
 
-		for (const object of locations.timelineObjects) {
+		for (const object of locations.semanticSegments) {
 			// Google has two types of timeline objects:
-			// 1. placeVisit
-			// 2. activitySegment
+			// 1. visit
+			// 2. activity
 			//
 			// Both of these have "start" and "end" information.
 			// The way this is programmed, we will prefer "end" information.
-			if (object.hasOwnProperty("placeVisit")) {
-				let place = object.placeVisit;
-				let lat = place.location.latitudeE7;
-				let lng = place.location.longitudeE7;
+			if (object.hasOwnProperty("visit")) {
+				let place = object.visit;
+				let topCandidate = place.topCandidate;
+				let { lat, lng } = parseLatLng(topCandidate.placeLocation.latLng);
 
-				let start_date = place.duration.startTimestamp.slice(0, 10);
+				let start_date = object.startTime.slice(0, 10);
 				insertHistory(start_date, lat, lng, year);
 
-				let end_date = place.duration.endTimestamp.slice(0, 10);
+				let end_date = object.endTime.slice(0, 10);
 				insertHistory(end_date, lat, lng, year);
-			} else {
-				let activity = object.activitySegment;
-				let start_date = activity.duration.startTimestamp.slice(0, 10);
-				let start_lat = activity.startLocation.latitudeE7;
-				let start_lng = activity.startLocation.longitudeE7;
+			} else if (object.hasOwnProperty("activity")) {
+				let activity = object.activity;
+				let start_date = object.startTime.slice(0, 10);
+				let { start_lat, start_lng } = parseLatLng(activity.start.latLng);
 				insertHistory(start_date, start_lat, start_lng, year);
 
-				let end_date = activity.duration.endTimestamp.slice(0, 10);
-				let end_lat = activity.endLocation.latitudeE7;
-				let end_lng = activity.endLocation.longitudeE7;
+				let end_date = object.endTime.slice(0, 10);
+				let { end_lat, end_lng } = parseLatLng(activity.end.latLng);
 				insertHistory(end_date, end_lat, end_lng, year);
+			} else {
+				//console.error("unknown google object type", { object })
 			}
 		}
-	}
 }
 
 // This logic handles what to do with days which did not generate a history.
