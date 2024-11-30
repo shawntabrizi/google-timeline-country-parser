@@ -4,9 +4,7 @@ const coordinate_to_code = require("coordinate_to_country");
 const code_to_country = require("country-code-lookup");
 const nanospinner = require("nanospinner");
 
-const SPINNER = nanospinner.createSpinner(`Processing your Google history...`).start();
-const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
-const BASE_LOCATION = "./Takeout/Location History (Timeline)/Semantic Location History";
+const SPINNER = nanospinner.createSpinner(`Processing your Google history...\n`).start();
 
 // CLI argument parsing using commander
 const program = new Command();
@@ -153,10 +151,16 @@ function parseYears(yearsString) {
 }
 
 function main() {
-	const years = parseYears(options.years);
+	let timeline;
+	try {
+		let rawData = fs.readFileSync(options.input);
+		timeline = JSON.parse(rawData);
+	} catch (error) {
+		console.error(`Failed to read or parse the input file: ${error.message}`);
+		process.exit(1);
+	}
 
-	let rawdata = fs.readFileSync(options.input);
-	let timeline = JSON.parse(rawdata);
+	const years = parseYears(options.years);
 
 	for (const year of years) {
 		parseYear(timeline, year);
@@ -205,8 +209,13 @@ function main() {
 		days_guessed: guessed.length,
 	});
 
-	let output = JSON.stringify(history, null, 2);
-	fs.writeFileSync(options.output, output);
+	let outputData = JSON.stringify(history, null, 2);
+	try {
+		fs.writeFileSync(options.output, outputData);
+		console.log(`Location history saved to ${options.output}`);
+	} catch (error) {
+		console.error(`Failed to write the output file: ${error.message}`);
+	}
 }
 
 main();
