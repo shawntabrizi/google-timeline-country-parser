@@ -1,5 +1,4 @@
 node_modules
-Takeout
 .DS_STORE
-output.json
-Timeline*.json
+*.json
+!package.json
