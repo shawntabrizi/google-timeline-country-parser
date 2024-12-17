@@ -5,6 +5,7 @@
   "author": "Shawn Tabrizi <shawntabrizi@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "commander": "^12.1.0",
     "coordinate_to_country": "^1.1.0",
     "country-code-lookup": "^0.0.22",
     "nanospinner": "^1.1.0"

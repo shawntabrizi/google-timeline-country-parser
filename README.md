@@ -1,34 +1,31 @@
 # Google Timeline: Country Parser
 
-This project parses the location history information from your [Google Takeout](https://takeout.google.com/settings/takeout).
+This project parses the location history information from your Google Location Services Timeline.
 
-Make sure your directory looks something like:
+NOTE: [Google recently changed](https://support.google.com/maps/answer/14169818) their privacy settings so that all timeline history is now stored locally on your phone. This repo supports this latest format.
 
-```
-google-timeline-country-parser/
-├─ README.md
-├─ index.js
-├─ Takeout/
-│  ├─ Location History/
-│    ├─ Records.json
-|    ├─ Settings.json
-│    ├─ 201X/
-│      ├─ 201X_JANUARY.json
-│      ├─ 201X_FEBRUARY.json
-│      ├─ 201X_MARCH.json
-│      ├─ ...
-│    ├─ 202X/
-│      ├─ ...
-├─ ...
-```
+To get your Google Location Services Timeline data, you must export it from your device:
 
-This should just be moving the Takeout history into the root folder.
+- Go to: Settings
+  - Location
+    - Location Services
+      - Timeline
+        - Export Timeline data
 
-Then just run:
+The output should be a single file called `Timeline.json`.
+
+Add this file to the root of this project.
 
 ```sh
-yarn
-yarn start <year>
+Usage: index [options]
+
+Options:
+  -y, --years <years>                Comma-separated list of years or ranges (e.g., '2014,2016-2018')
+  -i, --input <file>                 Input file name (default: "Timeline.json")
+  -o, --output <file>                Output file name (default: "output.json")
+  -p, --preferred-country <country>  Preferred country to prioritize when handling ambiguous locations
+  -h, --help                         display help for command
+✨  Done in 0.73s.
 ```
 
 Where year is one (or more) of the years in your `Location History` folder.
@@ -36,18 +33,21 @@ Where year is one (or more) of the years in your `Location History` folder.
 Output should look something like:
 
 ```sh
-> yarn start 2021
+> yarn start -y 2021
 
-Missing: 2021-01-01
+✔ Processing Complete!
 {
-  'Puerto Rico': 252,
-  'United States of America': 34,
-  Sweden: 30,
-  Germany: 16,
-  Portugal: 14,
-  'United Kingdom': 4,
-  'Republic of Serbia': 1,
-  Spain: 12
+  '2021': {
+    'Puerto Rico': 257,
+    Sweden: 30,
+    Germany: 16,
+    'United States': 29,
+    Portugal: 14,
+    'United Kingdom': 4,
+    Serbia: 1,
+    Spain: 13
+  }
 }
-Total Days: 364
+{ days_in_year: 365, days_missing: 1, days_guessed: 118 }
+Location history saved to output.json
 ```
