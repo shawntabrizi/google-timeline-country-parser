@@ -48,7 +48,7 @@ function sortCountryCounts(counts) {
   return Object.fromEntries(entries);
 }
 
-function buildSummary(history, years, parseStats) {
+function buildSummary(history, years, parseStats, inferenceStats) {
   const countryCounts = {};
   const includeTotal = years.length > 1;
 
@@ -61,9 +61,11 @@ function buildSummary(history, years, parseStats) {
 
   const stats = {
     ...parseStats,
+    ...inferenceStats,
     daysTotal: 0,
     daysWithLocation: 0,
     daysMissing: 0,
+    daysMissingFinal: 0,
     daysGuessed: 0,
   };
 
@@ -71,6 +73,7 @@ function buildSummary(history, years, parseStats) {
     stats.daysTotal += 1;
     if (!record) {
       stats.daysMissing += 1;
+      stats.daysMissingFinal += 1;
       continue;
     }
 
@@ -97,7 +100,7 @@ function buildSummary(history, years, parseStats) {
   };
 }
 
-function parseTimeline(timeline, options) {
+async function parseTimeline(timeline, options) {
   const years = Array.isArray(options.years) ? options.years : [];
   if (years.length === 0) {
     throw new Error("No years provided for parsing.");
@@ -106,10 +109,29 @@ function parseTimeline(timeline, options) {
   const preferredCountry = options.preferredCountry || null;
   const preferredKey = normalizeName(preferredCountry);
   const fillMissingDays = options.fillMissingDays !== false;
+  const maxInferGapDays =
+    Number.isInteger(options.maxInferGapDays) && options.maxInferGapDays >= 0
+      ? options.maxInferGapDays
+      : 7;
   const countryResolver = options.countryResolver;
+  const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+  const yieldEvery =
+    Number.isInteger(options.yieldEverySegments) && options.yieldEverySegments > 0
+      ? options.yieldEverySegments
+      : 1000;
+  const yieldToEventLoop =
+    typeof options.yieldToEventLoop === "function"
+      ? options.yieldToEventLoop
+      : async () =>
+          new Promise((resolve) => {
+            setImmediate(resolve);
+          });
 
   if (typeof countryResolver !== "function") {
     throw new Error("A countryResolver function is required.");
+  }
+  if (maxInferGapDays < 0) {
+    throw new Error("maxInferGapDays must be >= 0.");
   }
 
   if (!timeline || !Array.isArray(timeline.semanticSegments)) {
@@ -203,7 +225,12 @@ function parseTimeline(timeline, options) {
     return "accepted";
   }
 
-  for (const segment of timeline.semanticSegments) {
+  if (onProgress) {
+    onProgress({ processedSegments: 0, totalSegments: timeline.semanticSegments.length });
+  }
+
+  for (let segmentIndex = 0; segmentIndex < timeline.semanticSegments.length; segmentIndex += 1) {
+    const segment = timeline.semanticSegments[segmentIndex];
     let handledShape = false;
     let acceptedPoint = false;
     let malformedPointSeen = false;
@@ -286,43 +313,114 @@ function parseTimeline(timeline, options) {
         parseStats.malformedSegments += 1;
       }
     }
+
+    if (onProgress && segmentIndex > 0 && segmentIndex % yieldEvery === 0) {
+      onProgress({
+        processedSegments: segmentIndex,
+        totalSegments: timeline.semanticSegments.length,
+      });
+      await yieldToEventLoop();
+    }
+  }
+
+  if (onProgress) {
+    onProgress({
+      processedSegments: timeline.semanticSegments.length,
+      totalSegments: timeline.semanticSegments.length,
+    });
   }
 
   const today = todayKeyLocal();
   const dayKeys = Object.keys(history);
-  let lastKnown = null;
 
   for (const day of dayKeys) {
     if (day > today) {
       delete history[day];
       selectionMeta.delete(day);
-      continue;
-    }
-
-    if (!fillMissingDays) {
-      if (history[day]) {
-        lastKnown = history[day];
-      }
-      continue;
-    }
-
-    if (!history[day] && lastKnown) {
-      history[day] = {
-        ...lastKnown,
-        date: day,
-        guess: true,
-        source: "carry_forward",
-      };
-      selectionMeta.set(day, {
-        epoch: Number.NEGATIVE_INFINITY,
-        preferredHit: normalizeName(history[day].country) === preferredKey,
-      });
-    } else if (history[day]) {
-      lastKnown = history[day];
     }
   }
 
-  const summary = buildSummary(history, years, parseStats);
+  const boundedDayKeys = Object.keys(history);
+
+  const inferenceStats = {
+    daysMissingRaw: 0,
+    daysInferred: 0,
+    inferenceMode: fillMissingDays ? "bounded" : "none",
+    maxInferGapDays,
+  };
+
+  for (const day of boundedDayKeys) {
+    if (!history[day]) {
+      inferenceStats.daysMissingRaw += 1;
+    }
+  }
+
+  function inferFromTemplate(template, day, source, confidence) {
+    history[day] = {
+      ...template,
+      date: day,
+      guess: true,
+      source,
+      inferenceConfidence: confidence,
+    };
+    selectionMeta.set(day, {
+      epoch: Number.NEGATIVE_INFINITY,
+      preferredHit: normalizeName(history[day].country) === preferredKey,
+    });
+    inferenceStats.daysInferred += 1;
+  }
+
+  if (fillMissingDays) {
+    for (let index = 0; index < boundedDayKeys.length; index += 1) {
+      const day = boundedDayKeys[index];
+      if (history[day]) {
+        continue;
+      }
+
+      const start = index;
+      while (index < boundedDayKeys.length && !history[boundedDayKeys[index]]) {
+        index += 1;
+      }
+
+      const end = index - 1;
+      const gapSize = end - start + 1;
+      const prev = start > 0 ? history[boundedDayKeys[start - 1]] : null;
+      const next = index < boundedDayKeys.length ? history[boundedDayKeys[index]] : null;
+
+      if (prev && next) {
+        if (prev.country !== next.country) {
+          continue;
+        }
+        for (let cursor = start; cursor <= end; cursor += 1) {
+          const dayToFill = boundedDayKeys[cursor];
+          const distanceFromStart = cursor - start;
+          const distanceFromEnd = end - cursor;
+          const basis = distanceFromStart <= distanceFromEnd ? prev : next;
+          inferFromTemplate(basis, dayToFill, "interpolate_between", "high");
+        }
+        continue;
+      }
+
+      if (gapSize > maxInferGapDays) {
+        continue;
+      }
+
+      if (prev && !next) {
+        for (let cursor = start; cursor <= end; cursor += 1) {
+          inferFromTemplate(prev, boundedDayKeys[cursor], "carry_forward", "medium");
+        }
+        continue;
+      }
+
+      if (!prev && next) {
+        for (let cursor = start; cursor <= end; cursor += 1) {
+          inferFromTemplate(next, boundedDayKeys[cursor], "carry_backward", "medium");
+        }
+      }
+    }
+  }
+
+  const summary = buildSummary(history, years, parseStats, inferenceStats);
 
   return {
     history,

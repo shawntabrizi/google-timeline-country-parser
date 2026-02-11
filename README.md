@@ -27,7 +27,8 @@ Options:
   -i, --input <file>                 Input file (default: "Timeline.json")
   -o, --output <file>                Output file (default: "output.json")
   -p, --preferred-country <country>  Preferred country for ambiguous coordinates
-  --no-fill-missing                  Do not carry the previous known location to missing days
+  --no-fill-missing                  Disable missing-day inference
+  --max-infer-gap <days>             Maximum size for one-sided missing-day inference gaps (default: "7")
   --history-only                     Write only the date->record history object to output
   --pretty <spaces>                  JSON indentation spaces (default: "2")
   -q, --quiet                        Reduce console output
@@ -45,7 +46,7 @@ Options:
 
 Default output contains:
 - `history`: map of `YYYY-MM-DD -> daily record | null`
-- `summary`: years requested, per-year country day counts, aggregate counts (when multiple years), and parse stats
+- `summary`: years requested, per-year country day counts, aggregate counts (when multiple years), parse stats, and inference stats
 
 Record shape:
 
@@ -61,7 +62,15 @@ Record shape:
 }
 ```
 
-`guess: true` means the day was inferred by carrying forward the last known location.
+`guess: true` means the day was inferred (not directly observed). Inference now uses conservative bounded rules:
+- If a gap is between two known days in the same country, fill it (`source: "interpolate_between"`).
+- If a gap is one-sided (only before the first known day or after the last), fill only when gap size is `<= --max-infer-gap`.
+- If surrounding countries differ, leave the gap missing.
+
+Useful summary fields:
+- `daysMissingRaw`: missing days before inference.
+- `daysMissingFinal` (also `daysMissing`): missing days after inference.
+- `daysInferred` (also `daysGuessed`): days filled by inference.
 
 ## Quality Guarantees
 
@@ -69,4 +78,5 @@ Record shape:
 - Handles malformed timeline segments without crashing.
 - Parses real coordinate strings from all supported segment shapes.
 - Produces deterministic daily selection with optional preferred country tie-breaking.
+- Uses bounded inference with explicit confidence/source markers instead of unbounded forward-fill.
 - Includes tests for parsing, selection logic, and malformed input handling.
