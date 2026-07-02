@@ -76,12 +76,24 @@ export function renderDashboard(
         .map((p) => {
           const ok = p.satisfiedObserved;
           const okInferred = p.satisfiedWithInferred;
+          // Incomplete = the formula reached outside loaded data and this
+          // verdict could flip; never render it as a plain PASS/FAIL.
+          const badge = (verdict: boolean, long: boolean) => {
+            const untrustworthy = p.comparison === "at-least" ? !verdict : verdict;
+            if (p.incomplete && untrustworthy) {
+              return `<span class="badge partial">◌ ${long ? "INCOMPLETE" : "?"}</span>`;
+            }
+            return verdict
+              ? `<span class="badge pass">✓${long ? " PASS" : ""}</span>`
+              : `<span class="badge fail">✕${long ? " FAIL" : ""}</span>`;
+          };
           return `<div class="rule-period">
             <div class="rule-period-label">${escapeHtml(p.period)}</div>
             <div class="rule-num">${p.observedDays}<span class="rule-thresh">/${p.comparison === "at-least" ? "≥" : "≤"}${p.threshold}</span></div>
-            <div class="badge ${ok ? "pass" : "fail"}">${ok ? "✓ PASS" : "✕ FAIL"} <span class="badge-sub">observed</span></div>
-            ${p.inferredDays > 0 ? `<div class="badge ${okInferred ? "pass" : "fail"} ghost">${okInferred ? "✓" : "✕"} ${p.totalDays} <span class="badge-sub">with inferred</span></div>` : ""}
+            <div>${badge(ok, true)} <span class="badge-sub">observed</span></div>
+            ${p.inferredDays > 0 ? `<div class="ghost">${badge(okInferred, false)} ${p.totalDays} <span class="badge-sub">with inferred</span></div>` : ""}
             ${p.unknownDays > 0 ? `<div class="caveat">${p.unknownDays} days unknown</div>` : ""}
+            ${p.incomplete ? `<div class="caveat">formula reaches outside loaded data</div>` : ""}
           </div>`;
         })
         .join("");
@@ -162,7 +174,8 @@ export function renderDashboard(
   .rule-thresh { font-size: 13px; color: var(--muted); font-weight: 400; }
   .badge { display: inline-block; font-size: 12px; font-weight: 600; margin-top: 2px; }
   .badge.pass { color: var(--good); } .badge.fail { color: var(--critical); }
-  .badge.ghost { opacity: 0.75; font-weight: 400; display: block; }
+  .badge.partial { color: var(--muted); }
+  .ghost { opacity: 0.75; font-weight: 400; font-size: 12px; }
   .badge-sub { color: var(--muted); font-weight: 400; }
   .caveat { font-size: 12px; color: var(--muted); }
   .notes { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
