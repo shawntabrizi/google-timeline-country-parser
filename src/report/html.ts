@@ -104,11 +104,13 @@ export function renderDashboard(
             name === "Unknown"
               ? ""
               : `<span class="swatch" data-slot="${slot ?? 8}"></span>`;
-          return `<tr><td>${swatch}${escapeHtml(name)}</td><td class="num">${c.total}</td><td class="num">${c.observed}</td><td class="num">${c.inferred}</td></tr>`;
+          const travel = c.total - c.solo;
+          return `<tr><td>${swatch}${escapeHtml(name)}</td><td class="num">${c.total}</td><td class="num">${c.solo}</td><td class="num">${travel > 0 ? travel : ""}</td><td class="num">${c.observed}</td><td class="num">${c.inferred}</td></tr>`;
         })
         .join("");
       return `<details class="year-table"><summary>${year.year}: ${year.daysObserved} observed, ${year.daysInferred} inferred, ${year.daysUnknown} unknown, ${year.travelDays} travel days</summary>
-        <table><thead><tr><th>Country</th><th class="num">Days</th><th class="num">Observed</th><th class="num">Inferred</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+        <table><thead><tr><th>Country</th><th class="num">Days</th><th class="num">Solo</th><th class="num">Travel</th><th class="num">Observed</th><th class="num">Inferred</th></tr></thead><tbody>${rows}</tbody>
+        <caption>Days = any presence that day. Solo = whole day in this country alone; Travel = also in another country the same day (a PR→US hop counts once for each). Territories are always separate from their owning country: Puerto Rico days are never United States days.</caption></table></details>`;
     })
     .join("");
 
@@ -181,6 +183,7 @@ export function renderDashboard(
                 padding: 10px 14px; margin-bottom: 8px; }
   .year-table summary { cursor: pointer; color: var(--ink-2); }
   table { border-collapse: collapse; margin-top: 8px; }
+  caption { caption-side: bottom; text-align: left; color: var(--muted); font-size: 11px; padding-top: 8px; max-width: 560px; }
   th, td { text-align: left; padding: 3px 14px 3px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
   th { color: var(--muted); font-weight: 500; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }

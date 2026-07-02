@@ -11,6 +11,12 @@ export interface CountryYearSummary {
   observed: number;
   inferred: number;
   total: number;
+  /**
+   * Days spent ONLY in this country. total - solo = travel days shared with
+   * another country. Keeps e.g. "United States" honest when most of its days
+   * are same-day PR<->US hops that also count as Puerto Rico days.
+   */
+  solo: number;
 }
 
 export interface YearSummary {
@@ -48,11 +54,15 @@ function countriesOf(record: DayRecord): string[] {
 function bump(
   bucket: Record<string, CountryYearSummary>,
   country: string,
-  status: "observed" | "inferred"
+  status: "observed" | "inferred",
+  solo: boolean
 ): void {
-  const entry = bucket[country] ?? { observed: 0, inferred: 0, total: 0 };
+  const entry = bucket[country] ?? { observed: 0, inferred: 0, total: 0, solo: 0 };
   entry[status] += 1;
   entry.total += 1;
+  if (solo) {
+    entry.solo += 1;
+  }
   bucket[country] = entry;
 }
 
@@ -111,13 +121,15 @@ export function summarize(history: DayHistory, stats: BuildStats): ActivitySumma
     }
 
     const countries = countriesOf(record);
-    if (countries.filter((c) => c !== "Unknown").length > 1) {
+    const named = countries.filter((c) => c !== "Unknown");
+    if (named.length > 1) {
       summary.travelDays += 1;
       totals.travelDays += 1;
     }
     for (const country of countries) {
-      bump(summary.countries, country, status);
-      bump(totals.countries, country, status);
+      const solo = named.length === 1 && country !== "Unknown";
+      bump(summary.countries, country, status, solo);
+      bump(totals.countries, country, status, solo);
     }
   }
 
