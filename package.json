@@ -1,19 +1,29 @@
 {
   "name": "google-timeline-country-parser",
-  "version": "1.1.0",
-  "description": "Parse Google Timeline exports into daily country-level history with robust validation.",
-  "main": "index.js",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Parse Google Timeline exports into per-day country presence, activity summaries, and configurable presence tests (Act 60, SPT, UK SRT, Schengen, ...). Offline, zero runtime dependencies.",
+  "main": "src/cli.ts",
+  "bin": {
+    "timeline-presence": "./src/cli.ts"
+  },
   "author": "Shawn Tabrizi <shawntabrizi@gmail.com>",
   "license": "MIT",
-  "dependencies": {
-    "commander": "^12.1.0",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.0",
     "coordinate_to_country": "^1.1.0",
     "country-code-lookup": "^0.0.22",
-    "nanospinner": "^1.1.0"
+    "country-coder": "^2.1.0",
+    "typescript": "^5.7.0"
   },
   "scripts": {
-    "start": "node index.js",
-    "test": "node --test"
+    "start": "node src/cli.ts",
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

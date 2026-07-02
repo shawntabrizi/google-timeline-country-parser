@@ -1,0 +1,15 @@
+{
+  "id": "us-substantial-presence",
+  "title": "US Substantial Presence Test (SPT)",
+  "region": { "code": "USA", "exact": true },
+  "counting": "any-presence",
+  "period": {
+    "type": "multi-year-weighted",
+    "weights": [1, 0.3333333333333333, 0.16666666666666666],
+    "minCurrentYearDays": 31
+  },
+  "threshold": 183,
+  "comparison": "at-least",
+  "references": ["IRS: Substantial Presence Test (26 USC 7701(b)(3))"],
+  "notes": "Weighted days = current year + 1/3 prior year + 1/6 second prior year, requiring >= 31 days in the current year. The matcher is exact=true: days in US territories (Puerto Rico, Guam, USVI, ...) do NOT count, matching the statute. Simplifications: exempt-individual days, medical-condition days, in-transit (<24h) days, and commuter exceptions are not modeled; the closer-connection exception is not modeled."
+}

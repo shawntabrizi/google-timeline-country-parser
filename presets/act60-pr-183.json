@@ -1,0 +1,14 @@
+{
+  "id": "act60-pr-183",
+  "title": "Puerto Rico Act 60 / IRS presence test — 183-day prong",
+  "region": { "code": "PRI" },
+  "counting": "any-presence",
+  "period": { "type": "calendar-year" },
+  "threshold": 183,
+  "comparison": "at-least",
+  "references": [
+    "IRS Publication 570 (bona fide residence: presence test)",
+    "26 CFR 1.937-1(c)"
+  ],
+  "notes": "Models only the 183-day physical presence prong: a day counts if you were in Puerto Rico any part of the day. Does not model the other ways to satisfy the presence test (549-day 3-year prong — see preset pr-presence-549-3yr, the <=90 US days prong, the earned-income prong, or the no-significant-connection prong), medical/disaster day exceptions, or the tax-home and closer-connection tests that bona fide residence also requires."
+}
