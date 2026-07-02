@@ -1,53 +1,82 @@
-# Google Timeline: Country Parser
+# Google Timeline Country Parser
 
-This project parses the location history information from your Google Location Services Timeline.
+Parse Google Maps Timeline export data into a daily country-level history.
 
-NOTE: [Google recently changed](https://support.google.com/maps/answer/14169818) their privacy settings so that all timeline history is now stored locally on your phone. This repo supports this latest format.
+This parser supports the current `Timeline.json` export format, including:
+- `visit` segments
+- `activity` segments
+- `timelinePath` segments
 
-To get your Google Location Services Timeline data, you must export it from your device:
+It is designed to be robust against malformed segments and unknown points while still producing output.
 
-- Go to: Settings
-  - Location
-    - Location Services
-      - Timeline
-        - Export Timeline data
+## Input
 
-The output should be a single file called `Timeline.json`.
+Export timeline data from your phone (Google Maps Timeline export) and place `Timeline.json` in this project root, or pass a custom file path with `--input`.
 
-Add this file to the root of this project.
+## Usage
+
+```sh
+yarn start -- -y 2024
+```
 
 ```sh
 Usage: index [options]
 
 Options:
-  -y, --years <years>                Comma-separated list of years or ranges (e.g., '2014,2016-2018')
-  -i, --input <file>                 Input file name (default: "Timeline.json")
-  -o, --output <file>                Output file name (default: "output.json")
-  -p, --preferred-country <country>  Preferred country to prioritize when handling ambiguous locations
+  -y, --years <years>                Comma-separated years or ranges (e.g. '2014,2016-2018')
+  -i, --input <file>                 Input file (default: "Timeline.json")
+  -o, --output <file>                Output file (default: "output.json")
+  -p, --preferred-country <country>  Preferred country for ambiguous coordinates
+  --no-fill-missing                  Disable missing-day inference
+  --max-infer-gap <days>             Maximum size for one-sided missing-day inference gaps (default: "7")
+  --history-only                     Write only the date->record history object to output
+  --pretty <spaces>                  JSON indentation spaces (default: "2")
+  -q, --quiet                        Reduce console output
   -h, --help                         display help for command
-✨  Done in 0.73s.
 ```
 
-Where year is one (or more) of the years in your `Location History` folder.
+## Years Format
 
-Output should look something like:
+- Single year: `2024`
+- List: `2022,2024`
+- Range: `2020-2024`
+- Mixed: `2019,2021-2023,2025`
 
-```sh
-> yarn start -y 2021
+## Output
 
-✔ Processing Complete!
+Default output contains:
+- `history`: map of `YYYY-MM-DD -> daily record | null`
+- `summary`: years requested, per-year country day counts, aggregate counts (when multiple years), parse stats, and inference stats
+
+Record shape:
+
+```json
 {
-  '2021': {
-    'Puerto Rico': 257,
-    Sweden: 30,
-    Germany: 16,
-    'United States': 29,
-    Portugal: 14,
-    'United Kingdom': 4,
-    Serbia: 1,
-    Spain: 13
-  }
+  "date": "2024-03-14",
+  "country": "United States",
+  "lat": 34.224286,
+  "lng": -119.152395,
+  "guess": false,
+  "source": "visit_end",
+  "codes": ["USA", "PRI"]
 }
-{ days_in_year: 365, days_missing: 1, days_guessed: 118 }
-Location history saved to output.json
 ```
+
+`guess: true` means the day was inferred (not directly observed). Inference now uses conservative bounded rules:
+- If a gap is between two known days in the same country, fill it (`source: "interpolate_between"`).
+- If a gap is one-sided (only before the first known day or after the last), fill only when gap size is `<= --max-infer-gap`.
+- If surrounding countries differ, leave the gap missing.
+
+Useful summary fields:
+- `daysMissingRaw`: missing days before inference.
+- `daysMissingFinal` (also `daysMissing`): missing days after inference.
+- `daysInferred` (also `daysGuessed`): days filled by inference.
+
+## Quality Guarantees
+
+- Validates year input and rejects malformed year expressions.
+- Handles malformed timeline segments without crashing.
+- Parses real coordinate strings from all supported segment shapes.
+- Produces deterministic daily selection with optional preferred country tie-breaking.
+- Uses bounded inference with explicit confidence/source markers instead of unbounded forward-fill.
+- Includes tests for parsing, selection logic, and malformed input handling.
