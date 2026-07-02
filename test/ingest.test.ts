@@ -105,3 +105,34 @@ test("archive merge is idempotent and splits by year", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("fixes inside a Google FLYING window are tagged airborne; airports are not", () => {
+  const { observations, stats } = extractObservations({
+    semanticSegments: [
+      {
+        startTime: "2024-03-14T15:00:00.000-04:00",
+        endTime: "2024-03-14T18:00:00.000-04:00",
+        activity: {
+          topCandidate: { type: "FLYING" },
+          start: { latLng: "18.4655°, -66.1057°" },
+          end: { latLng: "40.7128°, -74.0060°" },
+        },
+      },
+      {
+        startTime: "2024-03-14T15:00:00.000-04:00",
+        endTime: "2024-03-14T18:00:00.000-04:00",
+        timelinePath: [
+          { point: "22.0°, -78.6°", time: "2024-03-14T16:30:00.000-04:00" }, // en route
+        ],
+      },
+    ],
+  });
+  assert.equal(stats.flyingSegments, 1);
+  const enRoute = observations.find((o) => o.source === "timeline_path")!;
+  assert.equal(enRoute.airborne, true);
+  // Departure/arrival airport fixes are genuine ground presence.
+  const takeoff = observations.find((o) => o.source === "activity_start")!;
+  const landing = observations.find((o) => o.source === "activity_end")!;
+  assert.notEqual(takeoff.airborne, true);
+  assert.notEqual(landing.airborne, true);
+});

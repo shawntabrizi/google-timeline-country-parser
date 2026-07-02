@@ -54,7 +54,7 @@ export function dayCounts(record: DayRecord, rule: RuleConfig): boolean {
     );
     return endPresence ? presenceMatches(rule.region, endPresence) : false;
   }
-  // any-presence
+  // any-presence (overflight regions are already excluded at build time)
   return record.regions.some((presence) => presenceMatches(rule.region, presence));
 }
 
@@ -173,24 +173,47 @@ function evaluateRollingWindow(
   }
 
   const results: PeriodResult[] = [];
+  // A window reaching before the first loaded day is computed from partial
+  // data; a verdict that could flip with the missing days must not be
+  // presented as trustworthy.
+  const markIfTruncated = (result: PeriodResult, windowStart: string): PeriodResult => {
+    if (windowStart < first) {
+      result.detail =
+        (result.detail ?? "") +
+        ` Window starts ${windowStart}, before the first loaded day (${first}) — partial data.`;
+      const couldFlip =
+        rule.comparison === "at-least" ? !result.satisfiedObserved : result.satisfiedObserved;
+      if (couldFlip) {
+        result.incomplete = true;
+      }
+    }
+    return result;
+  };
+
   if (peak) {
     results.push(
-      buildPeriodResult(
-        `peak ${windowDays}-day window ending ${peak.end}`,
-        peak.window,
-        rule,
-        `Highest count of matching days in any ${windowDays}-day window.`
+      markIfTruncated(
+        buildPeriodResult(
+          `peak ${windowDays}-day window ending ${peak.end}`,
+          peak.window,
+          rule,
+          `Highest count of matching days in any ${windowDays}-day window.`
+        ),
+        addDays(peak.end, -(windowDays - 1))
       )
     );
   }
   const latestStart = addDays(last, -(windowDays - 1));
   const latestWindow = days.filter((d) => d.date >= latestStart && d.date <= last);
   results.push(
-    buildPeriodResult(
-      `latest ${windowDays}-day window ending ${last}`,
-      latestWindow,
-      rule,
-      `Current standing as of the last day with data.`
+    markIfTruncated(
+      buildPeriodResult(
+        `latest ${windowDays}-day window ending ${last}`,
+        latestWindow,
+        rule,
+        `Current standing as of the last day with data.`
+      ),
+      latestStart
     )
   );
   return results;
@@ -206,18 +229,28 @@ function evaluateMultiYearWeighted(
   const years = Array.from(byYear.keys()).sort();
   const results: PeriodResult[] = [];
 
+  const loadedYears = new Set(years);
+
   for (const year of years) {
     const yearNumber = Number.parseInt(year, 10);
     let weightedObserved = 0;
     let weightedTotal = 0;
     const parts: string[] = [];
+    const missingYears: string[] = [];
     for (let i = 0; i < weights.length; i += 1) {
-      const contributing = byYear.get(String(yearNumber - i)) ?? [];
+      const referenced = String(yearNumber - i);
+      if (!loadedYears.has(referenced)) {
+        // Counting an unloaded year as 0 would silently corrupt the verdict.
+        missingYears.push(referenced);
+        parts.push(`${referenced}: not loaded`);
+        continue;
+      }
+      const contributing = byYear.get(referenced) ?? [];
       const observed = contributing.filter((d) => d.observed).length;
       const total = contributing.filter((d) => d.observed || d.inferred).length;
       weightedObserved += observed * weights[i]!;
       weightedTotal += total * weights[i]!;
-      parts.push(`${yearNumber - i}: ${total} x ${weights[i]}`);
+      parts.push(`${referenced}: ${total} x ${weights[i]}`);
     }
 
     const currentYearDays = byYear.get(year) ?? [];
@@ -245,10 +278,24 @@ function evaluateMultiYearWeighted(
       unknownDays: currentYearDays.filter((d) => d.unknown).length,
       detail:
         `Weighted days = ${parts.join(" + ")}` +
+        (missingYears.length > 0
+          ? `; ${missingYears.join(", ")} not loaded (year filter?) — the verdict cannot be trusted until the full window is loaded`
+          : "") +
         (minCurrentYearDays !== undefined
           ? `; requires >= ${minCurrentYearDays} days in ${year} itself`
           : ""),
     };
+    if (missingYears.length > 0) {
+      result.missingYears = missingYears;
+      // Only untrustworthy verdicts are marked incomplete: for an at-least
+      // test, missing data can only ADD days, so a PASS stands but a FAIL
+      // could flip (and vice versa for at-most).
+      const couldFlip =
+        rule.comparison === "at-least" ? !result.satisfiedObserved : result.satisfiedObserved;
+      if (couldFlip) {
+        result.incomplete = true;
+      }
+    }
     results.push(result);
   }
   return results;

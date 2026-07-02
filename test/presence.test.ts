@@ -106,3 +106,65 @@ test("years default to those present in the data", () => {
   assert.deepEqual(model.stats.yearsIncluded, [2023, 2024]);
   assert.equal(model.stats.daysTotal, 365 + 366); // 2023 + leap 2024
 });
+
+test("countries merely flown over never appear in the day's regions", () => {
+  // SJU -> NYC flight: the path fix over central Cuba implies ~860 km/h
+  // legs — airborne. Cuba is overflight, not presence, and must be absent
+  // from the output entirely. PR and US keep their ground evidence.
+  const centralCuba = { lat: 22.0, lng: -78.6 };
+  const model = buildPresenceModel(
+    [
+      obs("2024-03-14T08:00:00.000-04:00", LANDMARKS.sanJuanPR),
+      obs("2024-03-14T14:00:00.000-04:00", LANDMARKS.sanJuanPR),
+      obs("2024-03-14T15:30:00.000-04:00", centralCuba, "timeline_path"),
+      obs("2024-03-14T18:30:00.000-04:00", LANDMARKS.nycUS),
+      obs("2024-03-14T21:00:00.000-04:00", LANDMARKS.nycUS),
+    ],
+    resolve,
+    { years: [2024], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const day = model.history["2024-03-14"]!;
+  const countries = day.regions.map((r) => r.country).sort();
+  assert.deepEqual(countries, ["Puerto Rico", "United States of America"]);
+});
+
+test("Google-labeled airborne fixes are excluded even at ground speeds", () => {
+  // Paris -> Brussels over 11 hours (~24 km/h implied): the speed heuristic
+  // stays silent, so ONLY the ingest-time FLYING flag can exclude Belgium.
+  const model = buildPresenceModel(
+    [
+      obs("2024-03-14T08:00:00.000+01:00", LANDMARKS.parisFR),
+      obs("2024-03-14T09:00:00.000+01:00", LANDMARKS.parisFR),
+      { ...obs("2024-03-14T20:00:00.000+01:00", { lat: 50.85, lng: 4.35 }), airborne: true },
+    ],
+    resolve,
+    { years: [2024], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const day = model.history["2024-03-14"]!;
+  assert.deepEqual(day.regions.map((r) => r.country), ["France"]);
+});
+
+test("a day with only airborne fixes has no presence at all", () => {
+  const model = buildPresenceModel(
+    [{ ...obs("2024-03-14T12:00:00.000+00:00", LANDMARKS.parisFR), airborne: true }],
+    resolve,
+    { years: [2024], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  assert.equal(model.history["2024-03-14"]!.status, "unknown");
+  assert.deepEqual(model.history["2024-03-14"]!.regions, []);
+});
+
+test("fast ground travel is not mistaken for flying", () => {
+  // ~230 km in 1h = high-speed rail; both ends must count.
+  const model = buildPresenceModel(
+    [
+      obs("2024-03-14T08:00:00.000+01:00", LANDMARKS.parisFR),
+      obs("2024-03-14T09:00:00.000+01:00", { lat: 50.63, lng: 3.07 }), // Lille
+    ],
+    resolve,
+    { years: [2024], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const day = model.history["2024-03-14"]!;
+  assert.deepEqual(day.regions.map((r) => r.country), ["France"]);
+  assert.equal(day.regions[0]?.observationCount, 2);
+});

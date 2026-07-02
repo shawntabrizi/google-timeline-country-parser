@@ -16,6 +16,8 @@ import type { Observation, ObservationSource } from "../types.ts";
 export interface ExtractStats {
   semanticSegments: number;
   rawPositionSignals: number;
+  /** Activity segments Google labeled as FLYING. */
+  flyingSegments: number;
   observations: number;
   malformedEntries: number;
 }
@@ -48,9 +50,11 @@ export function extractObservations(exportJson: unknown): ExtractResult {
   }
 
   const observations: Observation[] = [];
+  const flyingWindows: Array<{ start: number; end: number }> = [];
   const stats: ExtractStats = {
     semanticSegments: segments.length,
     rawPositionSignals: 0,
+    flyingSegments: 0,
     observations: 0,
     malformedEntries: 0,
   };
@@ -73,12 +77,32 @@ export function extractObservations(exportJson: unknown): ExtractResult {
       startTime?: unknown;
       endTime?: unknown;
       visit?: { topCandidate?: { placeLocation?: { latLng?: unknown } } };
-      activity?: { start?: { latLng?: unknown }; end?: { latLng?: unknown } };
+      activity?: {
+        start?: { latLng?: unknown };
+        end?: { latLng?: unknown };
+        topCandidate?: { type?: unknown };
+      };
       timelinePath?: unknown;
     };
     if (!segment || typeof segment !== "object") {
       stats.malformedEntries += 1;
       continue;
+    }
+
+    // Google labels transport mode per activity segment. FLYING windows let
+    // us tag en-route fixes (which live in concurrent timelinePath segments
+    // and rawSignals) as airborne — flying over a country is not presence.
+    if (
+      typeof segment.activity?.topCandidate?.type === "string" &&
+      segment.activity.topCandidate.type.toUpperCase() === "FLYING" &&
+      isValidTimestamp(segment.startTime) &&
+      isValidTimestamp(segment.endTime)
+    ) {
+      stats.flyingSegments += 1;
+      flyingWindows.push({
+        start: Date.parse(segment.startTime),
+        end: Date.parse(segment.endTime),
+      });
     }
 
     if (segment.visit) {
@@ -120,6 +144,25 @@ export function extractObservations(exportJson: unknown): ExtractResult {
     }
     stats.rawPositionSignals += 1;
     add(signal.position.LatLng ?? signal.position.latLng, signal.position.timestamp, "raw_position");
+  }
+
+  // Tag observations strictly inside a FLYING window as airborne. Window
+  // endpoints stay untagged: they are the departure/arrival airports, which
+  // are genuine ground presence.
+  if (flyingWindows.length > 0) {
+    flyingWindows.sort((a, b) => a.start - b.start);
+    for (const observation of observations) {
+      const epoch = Date.parse(observation.time);
+      for (const window of flyingWindows) {
+        if (window.start >= epoch) {
+          break;
+        }
+        if (epoch < window.end) {
+          observation.airborne = true;
+          break;
+        }
+      }
+    }
   }
 
   stats.observations = observations.length;

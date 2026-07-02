@@ -210,8 +210,16 @@ function commandSummarize(argv: string[]): void {
 function formatRuleResult(result: RuleResult): string {
   const lines: string[] = [];
   lines.push(`\n${result.rule.title}  [${result.rule.id}]`);
-  const glyph = (ok: boolean) => (ok ? "PASS" : "FAIL");
   for (const period of result.periods) {
+    // An incomplete period must never render its untrustworthy direction as
+    // a plain verdict (at-least: FAIL could flip; at-most: PASS could flip).
+    const glyph = (ok: boolean) => {
+      const untrustworthy = period.comparison === "at-least" ? !ok : ok;
+      if (period.incomplete && untrustworthy) {
+        return "INCOMPLETE";
+      }
+      return ok ? "PASS" : "FAIL";
+    };
     const margin =
       period.comparison === "at-least"
         ? period.observedDays - period.threshold

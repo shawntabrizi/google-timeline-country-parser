@@ -208,3 +208,56 @@ test("custom rule files load and validate with clear errors", () => {
     /Unknown rule 'does-not-exist'. Built-in presets:/
   );
 });
+
+// --- incomplete verdicts: formulas must not silently treat unloaded years as 0 ---
+
+test("multi-year test marks FAIL as INCOMPLETE when prior years are not loaded", () => {
+  const rule = loadRule("pr-presence-549-3yr");
+  // Only 2024 loaded: 200 days < 549. With 2022-2023 loaded this could pass,
+  // so the FAIL is untrustworthy and must be flagged.
+  const result = evaluateRule(historyOf(fillYear(2024, PR, 1, 200)), rule);
+  const y2024 = result.periods.find((p) => p.period === "2024")!;
+  assert.equal(y2024.satisfiedObserved, false);
+  assert.equal(y2024.incomplete, true);
+  assert.deepEqual(y2024.missingYears, ["2023", "2022"]);
+  assert.match(y2024.detail ?? "", /not loaded/);
+});
+
+test("multi-year PASS with missing years stays a trustworthy PASS", () => {
+  // Missing years can only ADD days to an at-least test: a PASS cannot flip.
+  const rule = loadRule("pr-presence-549-3yr");
+  const result = evaluateRule(historyOf(fillYear(2024, PR, 1, 300)), rule);
+  // 300 < 549 -> still fails; use a custom threshold via SPT instead:
+  const spt = loadRule("us-substantial-presence");
+  const sptResult = evaluateRule(historyOf(fillYear(2024, US, 1, 200)), spt);
+  const y2024 = sptResult.periods.find((p) => p.period === "2024")!;
+  assert.equal(y2024.satisfiedObserved, true); // 200 >= 183 on current year alone
+  assert.notEqual(y2024.incomplete, true); // missing 2022/2023 cannot flip a PASS
+  assert.deepEqual(y2024.missingYears, ["2023", "2022"]);
+  void result;
+});
+
+test("multi-year test with all referenced years loaded is never incomplete", () => {
+  const rule = loadRule("pr-presence-549-3yr");
+  const history = historyOf([
+    ...fillYear(2022, PR, 1, 183),
+    ...fillYear(2023, PR, 1, 183),
+    ...fillYear(2024, PR, 1, 183),
+  ]);
+  const result = evaluateRule(history, rule);
+  const y2024 = result.periods.find((p) => p.period === "2024")!;
+  assert.equal(y2024.incomplete, undefined);
+  assert.equal(y2024.missingYears, undefined);
+});
+
+test("rolling window PASS is INCOMPLETE when the window predates loaded data", () => {
+  const rule = loadRule("schengen-90-180");
+  // 30 France days at the start of the loaded span: the latest 180-day
+  // window reaches before the first loaded day, so an at-most PASS could
+  // flip if earlier days were loaded.
+  const result = evaluateRule(historyOf(fillYear(2024, FR, 1, 30)), rule);
+  const latest = result.periods.find((p) => p.period.startsWith("latest"))!;
+  assert.equal(latest.satisfiedObserved, true);
+  assert.equal(latest.incomplete, true);
+  assert.match(latest.detail ?? "", /before the first loaded day/);
+});

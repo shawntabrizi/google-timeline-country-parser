@@ -15,6 +15,11 @@ export interface Observation {
   lng: number;
   /** Which export structure this came from. */
   source: ObservationSource;
+  /**
+   * True when the fix falls inside a Google-labeled FLYING activity window.
+   * Airborne fixes never establish presence (see overflight handling).
+   */
+  airborne?: boolean;
 }
 
 export type ObservationSource =
@@ -132,6 +137,16 @@ export interface PeriodResult {
   satisfiedWithInferred: boolean;
   /** Days in the period with no data at all (coverage gap warning). */
   unknownDays: number;
+  /**
+   * Set when the period's formula reaches outside the loaded data (e.g. a
+   * 3-year test evaluated with prior years excluded by --years, or a rolling
+   * window extending before the first loaded day) AND the verdict could flip
+   * if that data were present. An incomplete verdict must never be displayed
+   * as a plain PASS/FAIL.
+   */
+  incomplete?: boolean;
+  /** Years the formula referenced but that are absent from the loaded data. */
+  missingYears?: string[];
   detail?: string;
 }
 
