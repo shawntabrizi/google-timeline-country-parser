@@ -54,7 +54,7 @@ export function dayCounts(record: DayRecord, rule: RuleConfig): boolean {
     );
     return endPresence ? presenceMatches(rule.region, endPresence) : false;
   }
-  // any-presence
+  // any-presence (overflight regions are already excluded at build time)
   return record.regions.some((presence) => presenceMatches(rule.region, presence));
 }
 

@@ -56,6 +56,8 @@ export interface PresenceModel {
 
 interface DayAccumulator {
   regions: Map<string, DayRegionPresence>;
+  /** Non-airborne observation count per region key. */
+  groundCounts: Map<string, number>;
   lastEpoch: number;
   lastCountry: string | null;
   firstEpoch: number;
@@ -68,6 +70,66 @@ function regionKey(resolution: RegionResolution): string {
   return resolution.codes.length > 0
     ? resolution.codes[resolution.codes.length - 1]!
     : resolution.country;
+}
+
+/**
+ * Overflight detection. Two signals mark a fix as airborne:
+ *  1. Google's own FLYING activity windows (tagged at ingest, authoritative).
+ *  2. A speed heuristic between consecutive fixes — fallback for raw
+ *     positions, unlabeled legs, and teleporting stale WiFi fixes.
+ * Regions evidenced ONLY by airborne fixes are flight-path artifacts —
+ * flying over Cuba is not presence in Cuba — kept in the day record but
+ * flagged and never counted.
+ *
+ * 400 km/h clears every train (~320 max); the 40 km distance floor keeps GPS
+ * jitter between rapid nearby fixes from reading as supersonic.
+ */
+const AIRBORNE_MIN_KMH = 400;
+const AIRBORNE_MIN_LEG_KM = 40;
+
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+interface TaggedObservation {
+  observation: Observation;
+  epoch: number;
+  airborne: boolean;
+}
+
+function tagAirborne(observations: Observation[]): TaggedObservation[] {
+  const tagged: TaggedObservation[] = observations
+    .map((observation) => ({
+      observation,
+      epoch: Date.parse(observation.time),
+      airborne: observation.airborne === true,
+    }))
+    .filter((t) => Number.isFinite(t.epoch))
+    .sort((a, b) => a.epoch - b.epoch);
+
+  for (let i = 1; i < tagged.length; i += 1) {
+    const prev = tagged[i - 1]!;
+    const current = tagged[i]!;
+    const hours = (current.epoch - prev.epoch) / 3_600_000;
+    if (hours <= 0) {
+      continue;
+    }
+    const km = haversineKm(prev.observation, current.observation);
+    if (km >= AIRBORNE_MIN_LEG_KM && km / hours >= AIRBORNE_MIN_KMH) {
+      prev.airborne = true;
+      current.airborne = true;
+    }
+  }
+  return tagged;
 }
 
 function gapConfidence(gapDays: number): InferenceConfidence {
@@ -91,7 +153,7 @@ export function buildPresenceModel(
 
   const yearFilter = options.years ? new Set(options.years.map(String)) : null;
 
-  for (const observation of observations) {
+  for (const { observation, epoch, airborne } of tagAirborne(observations)) {
     const day = dayKeyOfTimestamp(observation.time);
     if (!day || day > today) {
       outOfScope += 1;
@@ -104,12 +166,12 @@ export function buildPresenceModel(
 
     const resolution = resolve(observation.lat, observation.lng);
     const key = regionKey(resolution);
-    const epoch = Date.parse(observation.time);
 
     let accumulator = accumulators.get(day);
     if (!accumulator) {
       accumulator = {
         regions: new Map(),
+        groundCounts: new Map(),
         lastEpoch: -Infinity,
         lastCountry: null,
         lastCodes: [],
@@ -143,6 +205,10 @@ export function buildPresenceModel(
       }
     }
 
+    if (airborne) {
+      continue; // airborne fixes never anchor day boundaries or ground counts
+    }
+    accumulator.groundCounts.set(key, (accumulator.groundCounts.get(key) ?? 0) + 1);
     if (epoch >= accumulator.lastEpoch) {
       accumulator.lastEpoch = epoch;
       accumulator.lastCountry = resolution.country;
@@ -178,9 +244,26 @@ export function buildPresenceModel(
         };
         continue;
       }
-      const regions = Array.from(accumulator.regions.values()).sort(
-        (a, b) => b.observationCount - a.observationCount
-      );
+      // Regions whose only evidence is airborne fixes are overflight
+      // artifacts (countries flown over, teleporting stale fixes). They are
+      // not presence and are dropped from the output entirely.
+      const regions: DayRegionPresence[] = [];
+      for (const [key, presence] of accumulator.regions) {
+        if ((accumulator.groundCounts.get(key) ?? 0) > 0) {
+          regions.push(presence);
+        }
+      }
+      if (regions.length === 0) {
+        // Every fix that day was airborne: no presence anywhere.
+        history[day] = {
+          date: day,
+          status: "unknown",
+          regions: [],
+          endOfDayCountry: null,
+        };
+        continue;
+      }
+      regions.sort((a, b) => b.observationCount - a.observationCount);
       history[day] = {
         date: day,
         status: "observed",

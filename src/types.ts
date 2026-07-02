@@ -15,6 +15,11 @@ export interface Observation {
   lng: number;
   /** Which export structure this came from. */
   source: ObservationSource;
+  /**
+   * True when the fix falls inside a Google-labeled FLYING activity window.
+   * Airborne fixes never establish presence (see overflight handling).
+   */
+  airborne?: boolean;
 }
 
 export type ObservationSource =
