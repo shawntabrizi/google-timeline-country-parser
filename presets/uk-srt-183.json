@@ -1,0 +1,11 @@
+{
+  "id": "uk-srt-183",
+  "title": "UK Statutory Residence Test — automatic 183-day rule",
+  "region": { "code": "GBR" },
+  "counting": "midnights",
+  "period": { "type": "offset-year", "start": "04-06" },
+  "threshold": 183,
+  "comparison": "at-least",
+  "references": ["HMRC RDR3: Statutory Residence Test, first automatic UK test"],
+  "notes": "Counts days you were in the UK at the end of the day (midnight rule), grouped by UK tax year (6 April to 5 April). Midnight presence is approximated by the location of the last observation of each day. Simplifications: the deeming rule, transit-day exception, exceptional-circumstances days, and the other automatic/sufficient-ties tests of the SRT are not modeled."
+}

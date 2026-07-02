@@ -1,0 +1,15 @@
+{
+  "id": "pr-presence-549-3yr",
+  "title": "Puerto Rico presence test — 549 days over 3 years prong",
+  "region": { "code": "PRI" },
+  "counting": "any-presence",
+  "period": {
+    "type": "multi-year-weighted",
+    "weights": [1, 1, 1],
+    "minCurrentYearDays": 60
+  },
+  "threshold": 549,
+  "comparison": "at-least",
+  "references": ["IRS Publication 570", "26 CFR 1.937-1(c)(1)(ii)"],
+  "notes": "Counts PR days in the current tax year plus the two preceding years (each weighted 1x). Simplification: the real rule requires at least 60 days of presence in EACH of the three years; this model enforces the 60-day minimum only for the current year, so verify the prior-year minimums in the per-year output of act60-pr-183."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "schengen-90-180",
+  "title": "Schengen area short-stay limit — 90 days in any 180",
+  "region": {
+    "codes": [
+      "AUT", "BEL", "BGR", "HRV", "CZE", "DNK", "EST", "FIN", "FRA", "DEU",
+      "GRC", "HUN", "ISL", "ITA", "LVA", "LIE", "LTU", "LUX", "MLT", "NLD",
+      "NOR", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE", "CHE"
+    ]
+  },
+  "counting": "any-presence",
+  "period": { "type": "rolling-window", "windowDays": 180 },
+  "threshold": 90,
+  "comparison": "at-most",
+  "references": ["Regulation (EU) 2016/399 (Schengen Borders Code), Art. 6(1)"],
+  "notes": "For visa-free visitors: at most 90 days of presence within any rolling 180-day window, counting any part-day as a day. Member list as of 2026 (Bulgaria and Romania included; Cyprus not yet a full member). Microstates (Monaco, San Marino, Vatican, Andorra) are de facto accessible but not modeled. Does not apply to EU citizens or residence-permit holders."
+}

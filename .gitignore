@@ -1,4 +1,22 @@
-node_modules
-.DS_STORE
+# --- Privacy: location data must never be committed. ---
+# JSON is deny-by-default: real Timeline exports, archives, and generated
+# outputs are all JSON. Only explicitly allowlisted JSON may be tracked.
 *.json
 !package.json
+!tsconfig.json
+!presets/*.json
+!test/fixtures/*.json
+Takeout/
+archive/
+local/
+output.json
+Timeline*.json
+
+# Generated reports contain real location data.
+report.html
+*.report.html
+
+node_modules
+.DS_Store
+.claude/
+!src/geo/data/borders.json
