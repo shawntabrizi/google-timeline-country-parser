@@ -63,7 +63,8 @@ presets/      Built-in, tested presence-test definitions (see below).
 - Every export is parsed into **observations**: `(timestamp+offset, lat, lng, source)`.
 - Observations merge into a local append-only archive (JSONL per year), deduped and
   idempotent — re-ingesting an overlapping export is a no-op.
-- Raw exports are archived untouched alongside.
+- Keep your raw export files alongside the archive (not yet automated —
+  planned, together with per-batch provenance and ingest conflict detection).
 - Rationale: Timeline data lives only on the phone. Regular exports are the backup;
   the merged archive is the long-term source of truth and survives device loss.
 
