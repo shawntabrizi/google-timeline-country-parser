@@ -30,6 +30,29 @@ function pickDateFromTimestamp(timestamp, fallbackDate) {
   return fallbackDate || null;
 }
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+function splitIntoContiguousRuns(dayKeys) {
+  const runs = [];
+  let run = [];
+  let prevEpoch = null;
+  for (const day of dayKeys) {
+    // Bare YYYY-MM-DD strings parse as UTC midnight, so consecutive calendar
+    // days always differ by exactly one day regardless of local timezone/DST.
+    const epoch = Date.parse(day);
+    if (prevEpoch !== null && epoch - prevEpoch !== ONE_DAY_MS) {
+      runs.push(run);
+      run = [];
+    }
+    run.push(day);
+    prevEpoch = epoch;
+  }
+  if (run.length > 0) {
+    runs.push(run);
+  }
+  return runs;
+}
+
 function addCountryCount(bucket, country) {
   if (bucket[country]) {
     bucket[country] += 1;
@@ -371,28 +394,37 @@ async function parseTimeline(timeline, options) {
   }
 
   if (fillMissingDays) {
-    for (let index = 0; index < boundedDayKeys.length; index += 1) {
-      const day = boundedDayKeys[index];
+    // Non-contiguous requested years (e.g. "2020,2022") produce day keys with
+    // calendar gaps between them. Inference must never treat days across such a
+    // gap as adjacent, so fill each contiguous run of days independently.
+    for (const runDayKeys of splitIntoContiguousRuns(boundedDayKeys)) {
+      fillGapsInRun(runDayKeys);
+    }
+  }
+
+  function fillGapsInRun(runDayKeys) {
+    for (let index = 0; index < runDayKeys.length; index += 1) {
+      const day = runDayKeys[index];
       if (history[day]) {
         continue;
       }
 
       const start = index;
-      while (index < boundedDayKeys.length && !history[boundedDayKeys[index]]) {
+      while (index < runDayKeys.length && !history[runDayKeys[index]]) {
         index += 1;
       }
 
       const end = index - 1;
       const gapSize = end - start + 1;
-      const prev = start > 0 ? history[boundedDayKeys[start - 1]] : null;
-      const next = index < boundedDayKeys.length ? history[boundedDayKeys[index]] : null;
+      const prev = start > 0 ? history[runDayKeys[start - 1]] : null;
+      const next = index < runDayKeys.length ? history[runDayKeys[index]] : null;
 
       if (prev && next) {
         if (prev.country !== next.country) {
           continue;
         }
         for (let cursor = start; cursor <= end; cursor += 1) {
-          const dayToFill = boundedDayKeys[cursor];
+          const dayToFill = runDayKeys[cursor];
           const distanceFromStart = cursor - start;
           const distanceFromEnd = end - cursor;
           const basis = distanceFromStart <= distanceFromEnd ? prev : next;
@@ -407,14 +439,14 @@ async function parseTimeline(timeline, options) {
 
       if (prev && !next) {
         for (let cursor = start; cursor <= end; cursor += 1) {
-          inferFromTemplate(prev, boundedDayKeys[cursor], "carry_forward", "medium");
+          inferFromTemplate(prev, runDayKeys[cursor], "carry_forward", "medium");
         }
         continue;
       }
 
       if (!prev && next) {
         for (let cursor = start; cursor <= end; cursor += 1) {
-          inferFromTemplate(next, boundedDayKeys[cursor], "carry_backward", "medium");
+          inferFromTemplate(next, runDayKeys[cursor], "carry_backward", "medium");
         }
       }
     }

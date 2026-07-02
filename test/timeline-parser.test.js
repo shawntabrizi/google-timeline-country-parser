@@ -187,6 +187,50 @@ test("bounded inference does not bridge gaps when surrounding countries differ",
   assert.equal(result.history["2020-01-11"], null);
 });
 
+test("inference does not bridge non-contiguous years", async () => {
+  const timeline = {
+    semanticSegments: [
+      {
+        startTime: "2020-12-01T08:00:00.000+00:00",
+        endTime: "2020-12-01T09:00:00.000+00:00",
+        visit: {
+          topCandidate: {
+            placeLocation: {
+              latLng: "10.0°, 10.0°",
+            },
+          },
+        },
+      },
+      {
+        startTime: "2022-02-01T08:00:00.000+00:00",
+        endTime: "2022-02-01T09:00:00.000+00:00",
+        visit: {
+          topCandidate: {
+            placeLocation: {
+              latLng: "10.0°, 10.0°",
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  const result = await parseTimeline(timeline, {
+    years: [2020, 2022],
+    fillMissingDays: true,
+    maxInferGapDays: 2,
+    countryResolver: fakeCountryResolver,
+  });
+
+  // The gap between Dec 2020 and Feb 2022 spans a year that was not
+  // requested, so it must not be treated as an adjacent-day gap and
+  // interpolated. Each year's one-sided gap exceeds maxInferGapDays,
+  // so the days stay missing.
+  assert.equal(result.history["2020-12-31"], null);
+  assert.equal(result.history["2022-01-01"], null);
+  assert.equal(result.summary.stats.daysInferred, 0);
+});
+
 test("one-sided inference obeys maxInferGapDays", async () => {
   const timeline = {
     semanticSegments: [
