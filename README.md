@@ -68,7 +68,9 @@ Rule checks always report *observed* and *with inferred* separately.
 A day is the **local calendar date of the place** you were. Google writes every
 timestamp in your phone's time zone at *export* time, so the tool ignores that
 offset and uses only the instant, then takes the date in the place's own time
-zone (vendored IANA `zone.tab`). `check` also re-counts with UTC days and lists
+zone (vendored IANA `zone.tab`; exact for single-zone countries and
+territories such as Puerto Rico, approximate inside multi-zone countries such
+as the US — see `src/geo/timezone.ts`). `check` also re-counts with UTC days and lists
 any dates that differ — those days hinge on a late-evening crossing and deserve
 independent evidence (boarding passes). A period still in progress, or with
 unknown days that could change the result, shows **INCOMPLETE** instead of FAIL.

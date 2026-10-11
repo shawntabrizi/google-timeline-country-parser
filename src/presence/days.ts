@@ -112,6 +112,42 @@ interface TaggedObservation {
   airborne: boolean;
 }
 
+/** Neighbors further apart in time than this never make a leg "fast". */
+const AIRBORNE_MAX_SCAN_MS = 12 * 3_600_000;
+/**
+ * A near fix (< AIRBORNE_MIN_LEG_KM) this far apart in time means the person
+ * stayed put: an aircraft covers 40 km in ~3-6 minutes, so in-flight near
+ * neighbors are always closer in time than this.
+ */
+const DWELL_MS = 10 * 60_000;
+
+/**
+ * Walk from fix i in `direction` to the nearest-in-time fix at least
+ * AIRBORNE_MIN_LEG_KM away; true when the implied speed is flight speed.
+ * A far fix at the same instant (impossible on the ground) counts as fast.
+ * Meeting a near fix more than DWELL_MS away first means the person dwelt
+ * here (an airport on a layover, a home): not fast.
+ */
+function fastToFarNeighbor(tagged: TaggedObservation[], i: number, direction: -1 | 1): boolean {
+  const origin = tagged[i]!;
+  for (let j = i + direction; j >= 0 && j < tagged.length; j += direction) {
+    const other = tagged[j]!;
+    const ms = Math.abs(origin.epoch - other.epoch);
+    if (ms > AIRBORNE_MAX_SCAN_MS) {
+      return false;
+    }
+    const km = haversineKm(origin.observation, other.observation);
+    if (km < AIRBORNE_MIN_LEG_KM) {
+      if (ms > DWELL_MS) {
+        return false;
+      }
+      continue;
+    }
+    return ms === 0 || km / (ms / 3_600_000) >= AIRBORNE_MIN_KMH;
+  }
+  return false;
+}
+
 function tagAirborne(observations: Observation[]): TaggedObservation[] {
   const tagged: TaggedObservation[] = observations
     .map((observation) => ({
@@ -122,23 +158,18 @@ function tagAirborne(observations: Observation[]): TaggedObservation[] {
     .filter((t) => Number.isFinite(t.epoch))
     .sort((a, b) => a.epoch - b.epoch);
 
-  // A fix is airborne only when BOTH its incoming and outgoing legs are fast:
-  // it sits in the middle of flight-speed motion (an in-flight fix, or a
-  // stale fix that teleports away and back). The endpoints of a single fast
-  // leg are where you were on the ground — departure and arrival airports —
-  // and marking them would erase real presence on travel days.
-  const fastLeg: boolean[] = [];
-  for (let i = 1; i < tagged.length; i += 1) {
-    const prev = tagged[i - 1]!;
-    const current = tagged[i]!;
-    const hours = (current.epoch - prev.epoch) / 3_600_000;
-    const km = haversineKm(prev.observation, current.observation);
-    fastLeg.push(
-      hours > 0 && km >= AIRBORNE_MIN_LEG_KM && km / hours >= AIRBORNE_MIN_KMH
-    );
-  }
+  // A fix is airborne only when it is reached AND left at flight speed: the
+  // nearest-in-time fix at least AIRBORNE_MIN_LEG_KM away on each side
+  // implies >= AIRBORNE_MIN_KMH. Near neighbors (dense in-flight fixes a few
+  // km apart, or duplicates at the same instant) are skipped, so they cannot
+  // break the chain. The endpoints of a flight are where you stood on the
+  // ground: a departure airport is reached slowly, an arrival airport is
+  // left slowly, and a layover airport has a dwell, so all keep presence.
   for (let i = 1; i < tagged.length - 1; i += 1) {
-    if (fastLeg[i - 1] && fastLeg[i]) {
+    if (
+      fastToFarNeighbor(tagged, i, -1) &&
+      fastToFarNeighbor(tagged, i, +1)
+    ) {
       tagged[i]!.airborne = true;
     }
   }
@@ -158,8 +189,8 @@ export function buildPresenceModel(
 ): PresenceModel {
   const fillMissingDays = options.fillMissingDays !== false;
   const maxInferGapDays = options.maxInferGapDays ?? 7;
-  const today = options.todayKey ?? todayKeyLocal();
   const utcBoundary = options.dayBoundary === "utc";
+  const today = options.todayKey ?? (utcBoundary ? utcDayKey(Date.now()) : todayKeyLocal());
 
   // --- Group observations into days, resolving regions. ---
   const accumulators = new Map<string, DayAccumulator>();

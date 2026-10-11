@@ -7,7 +7,7 @@ const at = (iso: string) => Date.parse(iso);
 
 test("Puerto Rico evenings stay on the local date (UTC would move them)", () => {
   // 21:00 in San Juan is 01:00 UTC the next day. Presence tests count the
-  // local calendar day, so this is the 25th, not the 26th.
+  // local calendar day, so this is the 8th, not the 9th.
   assert.equal(localDayKey(at("2010-11-09T01:00:00Z"), "America/Puerto_Rico"), "2010-11-08");
 });
 
@@ -47,6 +47,7 @@ test("multi-zone countries pick the nearest reference city", () => {
 
 test("regions without a zone fall back to the owner, then to longitude", () => {
   assert.equal(zoneForPoint(["FX", "FR"], 48.8566, 2.3522), "Europe/Paris");
+  assert.equal(zoneForPoint(["XK"], 42.66, 21.17), "Europe/Belgrade"); // Kosovo: alias, keeps DST
   assert.equal(zoneForPoint([], -48.87, -123.39), "Etc/GMT+8"); // Point Nemo
   assert.equal(longitudeZone(0), "Etc/GMT");
   assert.equal(longitudeZone(139.7), "Etc/GMT-9"); // Etc signs are inverted

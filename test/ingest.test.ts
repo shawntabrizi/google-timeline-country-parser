@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractObservations } from "../src/ingest/timeline.ts";
@@ -172,4 +172,19 @@ test("fixes inside a Google FLYING window are tagged airborne; airports are not"
   const landing = observations.find((o) => o.source === "activity_end")!;
   assert.notEqual(takeoff.airborne, true);
   assert.notEqual(landing.airborne, true);
+});
+
+test("new archive writes are bucketed by UTC year", () => {
+  // 22:00 on Dec 31 in San Juan is already the next year in UTC. The file
+  // year must not depend on the export's zone label; loaders read neighbors.
+  const dir = mkdtempSync(join(tmpdir(), "tp-archive-"));
+  try {
+    mergeIntoArchive(dir, [
+      { time: "2010-12-31T22:00:00.000-04:00", lat: 1, lng: 2, source: "visit_end" as const },
+    ]);
+    assert.deepEqual(readdirSync(dir), ["observations-2011.jsonl"]);
+    assert.equal(loadArchive(dir, [2010]).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

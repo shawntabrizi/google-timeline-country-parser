@@ -19,9 +19,15 @@
  * with its country and a reference city. A point takes the zone of the
  * nearest reference city in its own country (falling back up the ownership
  * chain). Single-zone countries and territories (Puerto Rico, most of
- * Europe, ...) are exact; multi-zone countries (US, Australia, Brazil, ...) can
- * pick a neighbor zone only near a zone border. Points outside every country
- * (open ocean) use nautical time from longitude.
+ * Europe, ...) are exact. In multi-zone countries (US, Canada, Mexico,
+ * Brazil, Russia, Australia, ...) the nearest reference city only
+ * approximates the zone polygons and can be wrong far from any border: in
+ * the US, Pensacola (Central) maps to an Eastern zone, Amarillo (Central) to
+ * Mountain, and Rapid City (Mountain) to Central. A wrong zone moves a fix
+ * across midnight only when it is within an hour of local midnight, and only
+ * day counts for those countries can change. Exact results need tz boundary
+ * polygons (not vendored, for size). Points outside every country (open
+ * ocean) use nautical time from longitude.
  */
 
 import { readFileSync } from "node:fs";
@@ -64,6 +70,13 @@ export function parseZoneTab(content: string): Map<string, ZoneEntry[]> {
   return byCountry;
 }
 
+/**
+ * Regions with no zone.tab entry and no owner chain to fall back on. Kosovo
+ * (XK) is not an ISO 3166 assignment, so tzdata omits it; it keeps Serbia's
+ * zone rules (CET with DST).
+ */
+const ZONE_ALIASES: Record<string, string> = { XK: "RS" };
+
 let zonesByCountry: Map<string, ZoneEntry[]> | null = null;
 
 function zones(): Map<string, ZoneEntry[]> {
@@ -88,7 +101,8 @@ export function longitudeZone(lng: number): string {
  * least specific (e.g. ["PR", "US"]). Empty list = outside every country.
  */
 export function zoneForPoint(iso2Chain: string[], lat: number, lng: number): string {
-  for (const iso2 of iso2Chain) {
+  for (const code of iso2Chain) {
+    const iso2 = ZONE_ALIASES[code] ?? code;
     const candidates = zones().get(iso2);
     if (!candidates || candidates.length === 0) {
       continue;

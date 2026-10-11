@@ -174,10 +174,14 @@ test("the endpoints of one fast leg are airports, not overflight", () => {
   // between them is flight-speed, but each fix is where the person stood on
   // the ground. Dropping them would erase a departure day and an arrival day
   // from the presence count.
+  // Slow neighbors on both sides, so the endpoints are interior fixes and
+  // the two-sided rule (not the array edges) is what keeps them.
   const model = buildPresenceModel(
     [
+      obs("2010-11-20T21:00:00.000-05:00", LANDMARKS.nycUS, "raw_position"),
       obs("2010-11-20T23:00:00.000-05:00", LANDMARKS.nycUS, "raw_position"),
       obs("2010-11-21T11:00:00.000+00:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-11-21T13:00:00.000+00:00", LANDMARKS.londonUK, "raw_position"),
     ],
     resolve,
     { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
@@ -216,7 +220,7 @@ test("days follow the place's local calendar, not the export's offset", () => {
   assert.equal(model.history["2010-11-08"]!.status, "observed");
   assert.equal(model.history["2010-11-09"]!.status, "unknown");
 
-  // The UTC boundary (used only for sensitivity checks) puts it on the 26th.
+  // The UTC boundary (used only for sensitivity checks) puts it on the 9th.
   const utc = buildPresenceModel(
     [obs("2010-11-09T08:30:00.000+07:00", LANDMARKS.sanJuanPR)],
     resolve,
@@ -234,4 +238,65 @@ test("a local New Year's Eve stays in the old year", () => {
     { years: [2010], fillMissingDays: false, todayKey: "2011-06-01" }
   );
   assert.equal(model.history["2010-12-31"]!.status, "observed");
+});
+
+// Berlin -> London flight with in-flight raw fixes over the Netherlands.
+const overNetherlandsA = { lat: 52.2, lng: 5.5 };
+const overNetherlandsB = { lat: 52.25, lng: 5.2 }; // ~21 km and 2 min later
+
+test("dense in-flight fixes are still overflight", () => {
+  // Two in-flight fixes 2 minutes apart are near each other; that short leg
+  // must not break the flight and let the overflown country count.
+  const model = buildPresenceModel(
+    [
+      obs("2010-06-01T09:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T10:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T11:00:00.000+02:00", overNetherlandsA, "raw_position"),
+      obs("2010-06-01T11:02:00.000+02:00", overNetherlandsB, "raw_position"),
+      obs("2010-06-01T10:45:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-06-01T12:00:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+    ],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const countries = model.history["2010-06-01"]!.regions.map((r) => r.country).sort();
+  assert.deepEqual(countries, ["Germany", "United Kingdom"]);
+});
+
+test("an in-flight fix stored twice at the same instant is still overflight", () => {
+  // Two export structures can carry the same fix; a zero-length, zero-time
+  // leg between the copies must not read as "slow".
+  const model = buildPresenceModel(
+    [
+      obs("2010-06-01T09:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T10:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T11:00:00.000+02:00", overNetherlandsA, "raw_position"),
+      obs("2010-06-01T11:00:00.000+02:00", overNetherlandsA, "timeline_path"),
+      obs("2010-06-01T10:45:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-06-01T12:00:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+    ],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const countries = model.history["2010-06-01"]!.regions.map((r) => r.country).sort();
+  assert.deepEqual(countries, ["Germany", "United Kingdom"]);
+});
+
+test("a layover airport keeps its presence between two flights", () => {
+  // Berlin -> London (layover) -> New York. The London fixes are reached and
+  // left at flight speed, but they dwell in place: the person was there.
+  const model = buildPresenceModel(
+    [
+      obs("2010-06-01T08:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T09:00:00.000+02:00", LANDMARKS.berlinDE, "raw_position"),
+      obs("2010-06-01T09:45:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-06-01T10:15:00.000+01:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-06-01T15:00:00.000-04:00", LANDMARKS.nycUS, "raw_position"),
+      obs("2010-06-01T16:00:00.000-04:00", LANDMARKS.nycUS, "raw_position"),
+    ],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  const countries = model.history["2010-06-01"]!.regions.map((r) => r.country).sort();
+  assert.deepEqual(countries, ["Germany", "United Kingdom", "United States of America"]);
 });

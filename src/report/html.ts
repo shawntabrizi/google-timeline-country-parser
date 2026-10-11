@@ -93,7 +93,7 @@ export function renderDashboard(
             <div>${badge(ok, true)} <span class="badge-sub">observed</span></div>
             ${p.inferredDays > 0 ? `<div class="ghost">${badge(okInferred, false)} ${p.totalDays} <span class="badge-sub">with inferred</span></div>` : ""}
             ${p.unknownDays > 0 ? `<div class="caveat">${p.unknownDays} days unknown</div>` : ""}
-            ${p.incomplete ? `<div class="caveat">${p.missingDays ? "period not fully in the data" : "formula reaches outside loaded data"}</div>` : ""}
+            ${p.incomplete ? `<div class="caveat">${p.missingDays ? "period not fully in the data" : p.missingYears || p.period.startsWith("peak") || p.period.startsWith("latest") ? "formula reaches outside loaded data" : "unknown days could change the verdict"}</div>` : ""}
             ${p.boundary ? `<div class="caveat">${p.boundary.satisfiedObserved !== ok ? "verdict depends on the day boundary; " : ""}${p.boundary.dates.length} day(s) differ with UTC days</div>` : ""}
           </div>`;
         })
