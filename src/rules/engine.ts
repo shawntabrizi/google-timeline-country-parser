@@ -5,7 +5,7 @@
  * observed number is the defensible one.
  */
 
-import { addDays, dayKeyToEpochUtc, ONE_DAY_MS } from "../dates.ts";
+import { addDays, dayKeysForYear, dayKeyToEpochUtc, ONE_DAY_MS } from "../dates.ts";
 import type {
   DayHistory,
   DayRecord,
@@ -133,6 +133,76 @@ function offsetYearLabel(date: string, startMonthDay: string): string {
   const boundary = `${year}-${startMonthDay}`;
   const startYear = date >= boundary ? year : year - 1;
   return `${startYear}/${String((startYear + 1) % 100).padStart(2, "0")}`;
+}
+
+function offsetYearLength(label: string, startMonthDay: string): number {
+  const startYear = Number.parseInt(label.slice(0, 4), 10);
+  const start = dayKeyToEpochUtc(`${startYear}-${startMonthDay}`);
+  const end = dayKeyToEpochUtc(`${startYear + 1}-${startMonthDay}`);
+  return Math.round((end - start) / ONE_DAY_MS);
+}
+
+/**
+ * A calendar or offset year is judged on the days in the loaded history. Days
+ * of the period that are missing (not yet elapsed, or before the first
+ * export) or unknown could still count. If they could change the verdict, it
+ * must not print as a plain PASS/FAIL: the current year in October is not a
+ * FAIL just because December has not happened.
+ */
+function markPartialPeriod(result: PeriodResult, periodLength: number, presentDays: number): PeriodResult {
+  const missingDays = Math.max(0, periodLength - presentDays);
+  if (missingDays > 0) {
+    result.missingDays = missingDays;
+  }
+  const open = missingDays + result.unknownDays;
+  if (open === 0) {
+    return result;
+  }
+  const potential = result.totalDays + open;
+  const couldFlip =
+    result.comparison === "at-least"
+      ? !result.satisfiedObserved && potential >= result.threshold
+      : result.satisfiedObserved && potential > result.threshold;
+  if (couldFlip) {
+    result.incomplete = true;
+    const parts: string[] = [];
+    if (missingDays > 0) parts.push(`${missingDays} days not in the data (not yet elapsed or not loaded)`);
+    if (result.unknownDays > 0) parts.push(`${result.unknownDays} days unknown`);
+    result.detail =
+      (result.detail ? `${result.detail} ` : "") +
+      `${parts.join(", ")} — the verdict can still change.`;
+  }
+  return result;
+}
+
+/**
+ * Compare against the same rule with UTC day boundaries. Dates counted under
+ * one boundary but not the other hinge on the time of day of a crossing;
+ * they are where independent evidence (boarding passes) matters most.
+ */
+function attachBoundaryCheck(
+  result: PeriodResult,
+  days: DayFlags[],
+  boundaryDays: DayFlags[] | undefined,
+  rule: RuleConfig
+): PeriodResult {
+  if (!boundaryDays) {
+    return result;
+  }
+  const local = new Set(days.filter((d) => d.observed).map((d) => d.date));
+  const utc = new Set(boundaryDays.filter((d) => d.observed).map((d) => d.date));
+  const dates = [
+    ...[...local].filter((d) => !utc.has(d)),
+    ...[...utc].filter((d) => !local.has(d)),
+  ].sort();
+  if (dates.length > 0) {
+    result.boundary = {
+      observedDays: utc.size,
+      satisfiedObserved: verdict(utc.size, rule.threshold, rule.comparison),
+      dates,
+    };
+  }
+  return result;
 }
 
 function evaluateRollingWindow(
@@ -301,25 +371,59 @@ function evaluateMultiYearWeighted(
   return results;
 }
 
-export function evaluateRule(history: DayHistory, rule: RuleConfig): RuleResult {
+/**
+ * `boundaryHistory`, when given, is the same data built with UTC day
+ * boundaries; calendar and offset-year periods then report which dates
+ * depend on the day boundary.
+ */
+export function evaluateRule(
+  history: DayHistory,
+  rule: RuleConfig,
+  boundaryHistory?: DayHistory
+): RuleResult {
   const days = flagDays(history, rule);
+  const boundaryDays = boundaryHistory ? flagDays(boundaryHistory, rule) : undefined;
   let periods: PeriodResult[];
 
   switch (rule.period.type) {
     case "calendar-year": {
-      const byYear = groupBy(days, (date) => date.slice(0, 4));
+      const keyOf = (date: string) => date.slice(0, 4);
+      const byYear = groupBy(days, keyOf);
+      const boundaryByYear = boundaryDays ? groupBy(boundaryDays, keyOf) : undefined;
       periods = Array.from(byYear.entries())
         .sort()
-        .map(([year, group]) => buildPeriodResult(year, group, rule));
+        .map(([year, group]) =>
+          attachBoundaryCheck(
+            markPartialPeriod(
+              buildPeriodResult(year, group, rule),
+              dayKeysForYear(Number.parseInt(year, 10)).length,
+              group.length
+            ),
+            group,
+            boundaryByYear ? (boundaryByYear.get(year) ?? []) : undefined,
+            rule
+          )
+        );
       break;
     }
     case "offset-year": {
       const start = rule.period.start;
-      const byPeriod = groupBy(days, (date) => offsetYearLabel(date, start));
+      const keyOf = (date: string) => offsetYearLabel(date, start);
+      const byPeriod = groupBy(days, keyOf);
+      const boundaryByPeriod = boundaryDays ? groupBy(boundaryDays, keyOf) : undefined;
       periods = Array.from(byPeriod.entries())
         .sort()
         .map(([label, group]) =>
-          buildPeriodResult(label, group, rule, `Year starting ${start}.`)
+          attachBoundaryCheck(
+            markPartialPeriod(
+              buildPeriodResult(label, group, rule, `Year starting ${start}.`),
+              offsetYearLength(label, start),
+              group.length
+            ),
+            group,
+            boundaryByPeriod ? (boundaryByPeriod.get(label) ?? []) : undefined,
+            rule
+          )
         );
       break;
     }

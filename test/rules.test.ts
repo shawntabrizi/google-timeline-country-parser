@@ -261,3 +261,87 @@ test("rolling window PASS is INCOMPLETE when the window predates loaded data", (
   assert.equal(latest.incomplete, true);
   assert.match(latest.detail ?? "", /before the first loaded day/);
 });
+
+// --- partial calendar periods: an unfinished year is not a FAIL ---
+
+test("act60: a year still in progress below the threshold is incomplete, not FAIL", () => {
+  // 150 PR days by the end of September; 92 days of the year remain. A plain
+  // FAIL would be wrong: the year can still pass.
+  const rule = loadRule("act60-pr-183");
+  const records = [...fillYear(2024, PR, 1, 150), ...fillYear(2024, US, 151, 124)];
+  const partial = evaluateRule(historyOf(records), rule).periods[0]!;
+  assert.equal(partial.observedDays, 150);
+  assert.equal(partial.satisfiedObserved, false);
+  assert.equal(partial.missingDays, 366 - 274);
+  assert.equal(partial.incomplete, true);
+});
+
+test("act60: a partial year already over the threshold is a plain PASS", () => {
+  const rule = loadRule("act60-pr-183");
+  const period = evaluateRule(historyOf(fillYear(2024, PR, 1, 200)), rule).periods[0]!;
+  assert.equal(period.satisfiedObserved, true);
+  assert.equal(period.incomplete, undefined);
+});
+
+test("act60: a partial year that can no longer pass is a plain FAIL", () => {
+  // 10 PR days and 300 US days: even if all 56 remaining days were PR, the
+  // year ends at 66. The verdict is settled.
+  const rule = loadRule("act60-pr-183");
+  const records = [...fillYear(2024, PR, 1, 10), ...fillYear(2024, US, 11, 300)];
+  const period = evaluateRule(historyOf(records), rule).periods[0]!;
+  assert.equal(period.satisfiedObserved, false);
+  assert.equal(period.incomplete, undefined);
+});
+
+test("act60: unknown days that could reach the threshold make a FAIL incomplete", () => {
+  const rule = loadRule("act60-pr-183");
+  const records = [
+    ...fillYear(2024, PR, 1, 180),
+    ...Array.from({ length: 186 }, (_, i) =>
+      unknownDay(new Date(Date.UTC(2024, 0, 181 + i)).toISOString().slice(0, 10))
+    ),
+  ];
+  const period = evaluateRule(historyOf(records), rule).periods[0]!;
+  assert.equal(period.unknownDays, 186);
+  assert.equal(period.missingDays, undefined);
+  assert.equal(period.incomplete, true);
+});
+
+test("uk-srt: a tax year that starts before the data is incomplete", () => {
+  // Data from 2024-01-01: the 2023/24 UK tax year (from 04-06) is only
+  // partly loaded and must not read as a FAIL with a handful of days.
+  const rule = loadRule("uk-srt-183");
+  const period = evaluateRule(historyOf(fillYear(2024, UK, 1, 60)), rule).periods.find(
+    (p) => p.period === "2023/24"
+  )!;
+  assert.equal(period.missingDays! > 0, true);
+  assert.equal(period.incomplete, true);
+});
+
+// --- day-boundary sensitivity ---
+
+test("dates counted under only one day boundary are reported, with the alternate verdict", () => {
+  // Local days: 183 PR days (an evening arrival counts on its local date).
+  // UTC days: that arrival moves to the next day, already a PR day: 182.
+  const rule = loadRule("act60-pr-183");
+  const local = [...fillYear(2024, PR, 1, 183), ...fillYear(2024, US, 184, 183)];
+  const utc = [
+    ...fillYear(2024, US, 1, 1),
+    ...fillYear(2024, PR, 2, 182),
+    ...fillYear(2024, US, 184, 183),
+  ];
+  const period = evaluateRule(historyOf(local), rule, historyOf(utc)).periods[0]!;
+  assert.equal(period.satisfiedObserved, true);
+  assert.deepEqual(period.boundary, {
+    observedDays: 182,
+    satisfiedObserved: false,
+    dates: ["2024-01-01"],
+  });
+});
+
+test("no boundary note when both boundaries count the same dates", () => {
+  const rule = loadRule("act60-pr-183");
+  const history = historyOf(fillYear(2024, PR));
+  const period = evaluateRule(history, rule, history).periods[0]!;
+  assert.equal(period.boundary, undefined);
+});

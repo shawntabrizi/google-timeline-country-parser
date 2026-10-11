@@ -19,9 +19,15 @@ hardcoded to it — rules are JSON presets in `presets/`.
   Substantial Presence Test excludes territories). Never fold PR into US.
 - **Inference is conservative and never crosses non-contiguous years** (this
   bug shipped once — see test/presence.test.ts regression guard).
-- **Day keys come from the timestamp's own UTC offset** (the local day where
-  the record was made). Note: the offset is the *device's* timezone, which can
-  rarely disagree with the location (stale WiFi positions).
+- **Day keys are the local calendar date of the PLACE** (`src/geo/timezone.ts`).
+  Exports render every timestamp in the phone's zone *at export time*, so the
+  offset in the text is meaningless for day boundaries; only the instant is
+  trusted. Each fix takes the IANA zone of its location (nearest zone.tab
+  reference city within its country; longitude for open ocean). Not UTC:
+  presence tests and evidence use local dates. `check`/`report` also run a
+  UTC-boundary model and list dates that depend on the boundary.
+- **Archive dedupe is by instant**, never by timestamp text (re-exports from
+  another zone re-label every fix).
 
 ## Hard constraints
 

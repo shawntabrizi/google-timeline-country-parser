@@ -6,6 +6,13 @@
 !tsconfig.json
 !presets/*.json
 !test/fixtures/*.json
+*.jsonl
+*.html
+*.csv
+*.gpx
+*.kml
+*.kmz
+*.zip
 Takeout/
 archive/
 local/

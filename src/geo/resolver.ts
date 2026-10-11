@@ -19,6 +19,7 @@
 import { readFileSync } from "node:fs";
 import { RegionIndex, type GeoFeature } from "./point-in-region.ts";
 import type { RegionResolution } from "../types.ts";
+import { zoneForPoint } from "./timezone.ts";
 
 interface BorderProperties {
   iso1A2?: string;
@@ -72,7 +73,7 @@ export function createResolver(bordersPath?: string): Resolver {
     let result: RegionResolution;
 
     if (matches.length === 0) {
-      result = UNKNOWN_REGION;
+      result = { ...UNKNOWN_REGION, timeZone: zoneForPoint([], lat, lng) };
     } else {
       // If multiple features match (shouldn't happen with disjoint data),
       // prefer the one that is owned (more specific).
@@ -106,9 +107,16 @@ export function createResolver(bordersPath?: string): Resolver {
         }
       }
 
+      // Most specific first, so a territory takes its own zone before its owner's.
+      // (props may be a rolled-up pseudo-region such as FX; it has no zone
+      // and falls through to its owner.)
+      const iso2Chain = [props, ...[...chain].reverse()]
+        .map((link) => link.iso1A2)
+        .filter((code): code is string => Boolean(code));
       result = {
         country: chain[chain.length - 1]!.nameEn ?? "Unknown",
         codes,
+        timeZone: zoneForPoint(iso2Chain, lat, lng),
       };
     }
 

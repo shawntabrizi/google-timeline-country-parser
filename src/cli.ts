@@ -110,11 +110,15 @@ function loadObservations(options: CommonOptions): Observation[] {
   return observations;
 }
 
-function buildModel(options: CommonOptions): PresenceModel {
-  const observations = loadObservations(options);
+function buildModel(
+  options: CommonOptions,
+  observations: Observation[] = loadObservations(options),
+  dayBoundary: "local" | "utc" = "local"
+): PresenceModel {
   const build: Parameters<typeof buildPresenceModel>[2] = {
     fillMissingDays: options.fill,
     maxInferGapDays: options.maxInferGap,
+    dayBoundary,
   };
   if (options.years) {
     build.years = options.years;
@@ -235,6 +239,16 @@ function formatRuleResult(result: RuleResult): string {
     if (period.detail) {
       lines.push(`      ${period.detail}`);
     }
+    if (period.boundary) {
+      const { dates, observedDays, satisfiedObserved } = period.boundary;
+      const flips = satisfiedObserved !== period.satisfiedObserved;
+      const shown = dates.length > 12 ? `${dates.slice(0, 12).join(", ")}, ...` : dates.join(", ");
+      lines.push(
+        `      ${flips ? "WARNING: verdict depends on the day boundary. " : ""}` +
+          `With UTC days: observed ${observedDays} -> ${satisfiedObserved ? "PASS" : "FAIL"}. ` +
+          `${dates.length} date(s) count under only one boundary: ${shown}. Keep independent evidence for these days.`
+      );
+    }
   }
   if (result.rule.notes) {
     lines.push(`  Note: ${result.rule.notes}`);
@@ -253,8 +267,7 @@ function commandCheck(argv: string[]): void {
     fail("Usage: timeline-presence check --rule <preset-id | file.json> [--rule ...]\nRun 'timeline-presence rules' to list presets.");
   }
   const options = parseCommon(values);
-  const model = buildModel(options);
-  const results = ruleIds.map((id) => evaluateRule(model.history, loadRule(id)));
+  const results = evaluateRules(options, ruleIds).results;
 
   if (options.json) {
     console.log(JSON.stringify({ results }, null, 2));
@@ -263,6 +276,18 @@ function commandCheck(argv: string[]): void {
   for (const result of results) {
     console.log(formatRuleResult(result));
   }
+}
+
+/** Rules run on local days, with a UTC-boundary model for the sensitivity check. */
+function evaluateRules(
+  options: CommonOptions,
+  ruleIds: string[]
+): { model: PresenceModel; results: RuleResult[] } {
+  const observations = loadObservations(options);
+  const model = buildModel(options, observations);
+  const boundary = buildModel(options, observations, "utc");
+  const results = ruleIds.map((id) => evaluateRule(model.history, loadRule(id), boundary.history));
+  return { model, results };
 }
 
 function commandHistory(argv: string[]): void {
@@ -291,10 +316,9 @@ function commandReport(argv: string[]): void {
     },
   });
   const options = parseCommon(values);
-  const model = buildModel(options);
-  const summary = summarize(model.history, model.stats);
   const ruleIds = (values.rule ?? ["act60-pr-183"]) as string[];
-  const results = ruleIds.map((id) => evaluateRule(model.history, loadRule(id)));
+  const { model, results } = evaluateRules(options, ruleIds);
+  const summary = summarize(model.history, model.stats);
 
   const html = renderDashboard(model.history, summary, results);
   const outPath = String(values.out);
