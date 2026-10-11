@@ -16,6 +16,7 @@ import {
   historyOf,
   inferredDay,
   observedDay,
+  presence,
   unknownDay,
 } from "./helpers.ts";
 
@@ -344,4 +345,56 @@ test("no boundary note when both boundaries count the same dates", () => {
   const history = historyOf(fillYear(2024, PR));
   const period = evaluateRule(history, rule, history).periods[0]!;
   assert.equal(period.boundary, undefined);
+});
+
+// --- territories: exact matching for UK and Schengen ---
+
+const JERSEY = () => presence("Jersey", ["GBR", "JEY"]);
+const REUNION = () => presence("Réunion", ["FRA", "REU"]);
+const ALAND = () => presence("Åland Islands", ["FIN", "ALA"]);
+
+test("UK SRT: Crown Dependency nights are not UK nights", () => {
+  // Jersey resolves with its owner's code first; with any-code matching it
+  // counted as UK and could turn a 120-night year into a false PASS.
+  const rule = loadRule("uk-srt-183");
+  const history = historyOf([
+    observedDay("2024-06-01", [JERSEY()]),
+    observedDay("2024-06-02", [UK()]),
+  ]);
+  const period = evaluateRule(history, rule).periods.find((p) => p.period === "2024/25")!;
+  assert.equal(period.observedDays, 1);
+});
+
+test("Schengen: overseas territories do not count; Åland does", () => {
+  // Réunion is French but outside Schengen: counting it gave false FAILs.
+  // Åland is Finnish and inside Schengen, and carries its own code.
+  const rule = loadRule("schengen-90-180");
+  const history = historyOf([
+    observedDay("2024-03-01", [REUNION()]),
+    observedDay("2024-03-02", [ALAND()]),
+    observedDay("2024-03-03", [FR()]),
+  ]);
+  const peak = evaluateRule(history, rule).periods.find((p) => p.period.startsWith("peak"))!;
+  assert.equal(peak.observedDays, 2);
+});
+
+// --- rolling windows: observed and with-inferred peaks are separate ---
+
+test("Schengen: the observed verdict uses the window with the most observed days", () => {
+  // Jan-Mar: 91 observed days (a violation). Later: 85 observed + 10
+  // inferred = 95 total. Picking the peak by total hid the observed
+  // violation and printed "observed 85 -> PASS".
+  const rule = loadRule("schengen-90-180");
+  const records = [...fillYear(2024, FR, 1, 91)];
+  for (let i = 0; i < 95; i += 1) {
+    const date = new Date(Date.UTC(2024, 0, 201 + i)).toISOString().slice(0, 10);
+    records.push(i < 85 ? observedDay(date, [FR()]) : inferredDay(date, FR()));
+  }
+  const periods = evaluateRule(historyOf(records), rule).periods;
+  const observedPeak = periods.find((p) => p.period.endsWith("(observed)"))!;
+  assert.equal(observedPeak.observedDays, 91);
+  assert.equal(observedPeak.satisfiedObserved, false);
+  const totalPeak = periods.find((p) => p.period.endsWith("(with inferred)"))!;
+  assert.equal(totalPeak.totalDays, 95);
+  assert.equal(totalPeak.satisfiedWithInferred, false);
 });

@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { extractObservations } from "../src/ingest/timeline.ts";
 import { loadArchive, mergeIntoArchive } from "../src/ingest/archive.ts";
 import { parseCoordinate } from "../src/ingest/coordinates.ts";
+import { buildPresenceModel } from "../src/presence/days.ts";
+import { createResolver } from "../src/geo/resolver.ts";
 
 test("extracts observations from all supported export shapes", () => {
   const exportJson = {
@@ -44,13 +46,14 @@ test("extracts observations from all supported export shapes", () => {
   };
 
   const { observations, stats } = extractObservations(exportJson);
-  // visit start+end, activity start+end, 2 path nodes, 1 raw position = 7
-  assert.equal(observations.length, 7);
+  // visit start+end (+1 interior fix: the 17h visit crosses 12h),
+  // activity start+end, 2 path nodes, 1 raw position = 8
+  assert.equal(observations.length, 8);
   assert.equal(stats.rawPositionSignals, 1);
   assert.equal(stats.malformedEntries, 0);
   // A visit spanning midnight evidences presence on BOTH days.
   const visitDays = observations
-    .filter((o) => o.source.startsWith("visit"))
+    .filter((o) => o.source === "visit_start" || o.source === "visit_end")
     .map((o) => o.time.slice(0, 10));
   assert.deepEqual(visitDays, ["2024-03-01", "2024-03-02"]);
 });
@@ -187,4 +190,45 @@ test("new archive writes are bucketed by UTC year", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a multi-day visit gives every day it spans an observation", () => {
+  // One visit from Mar 1 08:00 to Mar 4 18:00. Before, only its two ends
+  // were fixes, so Mar 2-3 were merely "inferred" and the observed count
+  // (the defensible one) was too low.
+  const { observations } = extractObservations({
+    semanticSegments: [
+      {
+        startTime: "2010-03-01T08:00:00.000-04:00",
+        endTime: "2010-03-04T18:00:00.000-04:00",
+        visit: { topCandidate: { placeLocation: { latLng: "18.4655°, -66.1057°" } } },
+      },
+    ],
+  });
+  const model = buildPresenceModel(observations, createResolver(), {
+    years: [2010],
+    fillMissingDays: false,
+    todayKey: "2011-01-01",
+  });
+  for (const day of ["2010-03-01", "2010-03-02", "2010-03-03", "2010-03-04"]) {
+    assert.equal(model.history[day]!.status, "observed", day);
+  }
+  assert.equal(model.history["2010-03-05"]!.status, "unknown");
+  assert.ok(observations.some((o) => o.source === "visit_interior"));
+});
+
+test("a short visit adds no interior fixes", () => {
+  const { observations } = extractObservations({
+    semanticSegments: [
+      {
+        startTime: "2010-03-01T08:00:00.000-04:00",
+        endTime: "2010-03-01T19:00:00.000-04:00",
+        visit: { topCandidate: { placeLocation: { latLng: "18.4655°, -66.1057°" } } },
+      },
+    ],
+  });
+  assert.deepEqual(
+    observations.map((o) => o.source),
+    ["visit_start", "visit_end"]
+  );
 });

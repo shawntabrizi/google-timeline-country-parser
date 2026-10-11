@@ -35,6 +35,8 @@ function isValidTimestamp(value: unknown): value is string {
   );
 }
 
+const VISIT_INTERIOR_STEP_MS = 12 * 3_600_000;
+
 export function extractObservations(exportJson: unknown): ExtractResult {
   const root = (exportJson ?? {}) as {
     semanticSegments?: unknown;
@@ -114,6 +116,18 @@ export function extractObservations(exportJson: unknown): ExtractResult {
         // start and end instants (which may fall on different days).
         add(location, segment.startTime, "visit_start");
         add(location, segment.endTime, "visit_end");
+        // Google records one visit for a stay of several days. Without
+        // fixes inside it, the middle days had no observations and were
+        // only "inferred", though the visit itself evidences presence on
+        // them. One fix every 12 hours lands in every calendar day the stay
+        // spans (a local day is at least 23 hours long).
+        if (isValidTimestamp(segment.startTime) && isValidTimestamp(segment.endTime)) {
+          const start = Date.parse(segment.startTime);
+          const end = Date.parse(segment.endTime);
+          for (let t = start + VISIT_INTERIOR_STEP_MS; t < end; t += VISIT_INTERIOR_STEP_MS) {
+            add(location, new Date(t).toISOString(), "visit_interior");
+          }
+        }
       }
     }
 
