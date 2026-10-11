@@ -218,8 +218,12 @@ function evaluateRollingWindow(
   const first = days[0]!.date;
   const last = days[days.length - 1]!.date;
 
-  let peak: { end: string; window: DayFlags[] } | null = null;
-  let peakTotal = -1;
+  // The observed and with-inferred verdicts each need their own worst
+  // window: the window with the most days in total can hold fewer observed
+  // days than another window.
+  let peakObserved: { end: string; window: DayFlags[]; observed: number; total: number } | null =
+    null;
+  let peakTotal: { end: string; window: DayFlags[]; total: number } | null = null;
 
   for (
     let epoch = dayKeyToEpochUtc(first);
@@ -235,10 +239,17 @@ function evaluateRollingWindow(
         window.push(day);
       }
     }
+    const observed = window.filter((d) => d.observed).length;
     const total = window.filter((d) => d.observed || d.inferred).length;
-    if (total > peakTotal) {
-      peakTotal = total;
-      peak = { end, window };
+    if (
+      !peakObserved ||
+      observed > peakObserved.observed ||
+      (observed === peakObserved.observed && total > peakObserved.total)
+    ) {
+      peakObserved = { end, window, observed, total };
+    }
+    if (!peakTotal || total > peakTotal.total) {
+      peakTotal = { end, window, total };
     }
   }
 
@@ -260,18 +271,32 @@ function evaluateRollingWindow(
     return result;
   };
 
-  if (peak) {
+  if (peakObserved && peakTotal) {
+    const split = peakObserved.end !== peakTotal.end && peakTotal.total > peakObserved.total;
     results.push(
       markIfTruncated(
         buildPeriodResult(
-          `peak ${windowDays}-day window ending ${peak.end}`,
-          peak.window,
+          `peak ${windowDays}-day window ending ${peakObserved.end}${split ? " (observed)" : ""}`,
+          peakObserved.window,
           rule,
-          `Highest count of matching days in any ${windowDays}-day window.`
+          `Highest count of matching ${split ? "observed " : ""}days in any ${windowDays}-day window.`
         ),
-        addDays(peak.end, -(windowDays - 1))
+        addDays(peakObserved.end, -(windowDays - 1))
       )
     );
+    if (split) {
+      results.push(
+        markIfTruncated(
+          buildPeriodResult(
+            `peak ${windowDays}-day window ending ${peakTotal.end} (with inferred)`,
+            peakTotal.window,
+            rule,
+            `Highest count of observed + inferred days in any ${windowDays}-day window.`
+          ),
+          addDays(peakTotal.end, -(windowDays - 1))
+        )
+      );
+    }
   }
   const latestStart = addDays(last, -(windowDays - 1));
   const latestWindow = days.filter((d) => d.date >= latestStart && d.date <= last);

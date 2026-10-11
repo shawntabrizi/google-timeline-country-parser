@@ -25,6 +25,8 @@ export interface Observation {
 export type ObservationSource =
   | "visit_start"
   | "visit_end"
+  /** Synthetic fix inside a multi-day visit (see VISIT_INTERIOR_STEP_MS). */
+  | "visit_interior"
   | "activity_start"
   | "activity_end"
   | "timeline_path"

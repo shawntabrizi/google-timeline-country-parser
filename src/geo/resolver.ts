@@ -28,6 +28,7 @@ interface BorderProperties {
   /** iso1A2 of the owning country, for territories. */
   country?: string;
   aliases?: string[];
+  wikidata?: string;
 }
 
 export type Resolver = (lat: number, lng: number) => RegionResolution;
@@ -42,6 +43,16 @@ export const UNKNOWN_REGION: RegionResolution = { country: "Unknown", codes: [] 
  * tests routinely need them separated from the owning country.
  */
 const ROLL_UP_CODES = new Set(["FXX"]);
+
+/**
+ * Separate jurisdictions that the border data carries without an ISO
+ * alpha-3 code, keyed by wikidata id. Without a code they would resolve to
+ * their owner alone (Sark as plain "GBR") and count as the owner for exact
+ * rules such as the UK SRT. Sark belongs to the Bailiwick of Guernsey, which
+ * ISO 3166 covers as GGY. (Integral parts without a code, such as the Canary
+ * Islands or Ceuta and Melilla, correctly resolve as their country.)
+ */
+const DEPENDENCY_CODES: Record<string, string> = { Q3405693: "GGY" };
 
 export function createResolver(bordersPath?: string): Resolver {
   const dataPath =
@@ -105,6 +116,10 @@ export function createResolver(bordersPath?: string): Resolver {
         if (link.iso1A3 && !ROLL_UP_CODES.has(link.iso1A3)) {
           codes.push(link.iso1A3);
         }
+      }
+      const dependencyCode = props.wikidata ? DEPENDENCY_CODES[props.wikidata] : undefined;
+      if (dependencyCode && codes[codes.length - 1] !== dependencyCode) {
+        codes.push(dependencyCode);
       }
 
       // Most specific first, so a territory takes its own zone before its owner's.
