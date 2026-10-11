@@ -232,3 +232,42 @@ test("a short visit adds no interior fixes", () => {
     ["visit_start", "visit_end"]
   );
 });
+
+test("a 23-hour DST day inside a visit is still observed", () => {
+  // New York springs forward on 2010-03-14, a 23-hour day. A 24-hour step
+  // from 23:30 on the 13th lands exactly at the end (00:30 on the 15th) and
+  // skips the 14th; the 12-hour step cannot.
+  const { observations } = extractObservations({
+    semanticSegments: [
+      {
+        startTime: "2010-03-13T23:30:00.000-05:00",
+        endTime: "2010-03-15T00:30:00.000-04:00",
+        visit: { topCandidate: { placeLocation: { latLng: "40.7128°, -74.0060°" } } },
+      },
+    ],
+  });
+  const model = buildPresenceModel(observations, createResolver(), {
+    years: [2010],
+    fillMissingDays: false,
+    todayKey: "2011-01-01",
+  });
+  assert.equal(model.history["2010-03-14"]!.status, "observed");
+});
+
+test("visits longer than 31 days get no interior fixes", () => {
+  // A weeks-long "visit" usually means the phone recorded nothing; those
+  // days must stay inferred, not become observed.
+  const { observations } = extractObservations({
+    semanticSegments: [
+      {
+        startTime: "2010-03-01T08:00:00.000-04:00",
+        endTime: "2010-04-15T08:00:00.000-04:00",
+        visit: { topCandidate: { placeLocation: { latLng: "18.4655°, -66.1057°" } } },
+      },
+    ],
+  });
+  assert.deepEqual(
+    observations.map((o) => o.source),
+    ["visit_start", "visit_end"]
+  );
+});

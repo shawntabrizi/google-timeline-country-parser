@@ -35,3 +35,10 @@ test("open ocean resolves to Unknown, not a guess", () => {
   assert.equal(result.country, "Unknown");
   assert.deepEqual(result.codes, []);
 });
+
+test("Sark is a Guernsey dependency, not the UK", () => {
+  // The border data has no alpha-3 code for Sark; without the mapping it
+  // resolved as plain GBR and counted as UK nights for exact rules.
+  const sark = createResolver()(49.43, -2.36);
+  assert.deepEqual(sark.codes, ["GBR", "GGY"]);
+});

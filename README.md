@@ -58,7 +58,8 @@ counts for both Puerto Rico and the US), and every day carries a confidence
 status:
 
 - **observed** — direct location observations that day (the defensible number)
-  (a multi-day Google visit counts as observed on every day it spans)
+  (a multi-day Google visit of up to 31 days counts as observed on every day
+  it spans; archives built before this rule need the exports ingested again)
 - **inferred** — gap between observations, filled conservatively and labeled
   (same country on both sides: any gap, confidence graded high/medium/low by
   length; edges: at most `--max-infer-gap` days, default 7)

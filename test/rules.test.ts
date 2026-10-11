@@ -398,3 +398,21 @@ test("Schengen: the observed verdict uses the window with the most observed days
   assert.equal(totalPeak.totalDays, 95);
   assert.equal(totalPeak.satisfiedWithInferred, false);
 });
+
+test("rolling windows: equal observed peaks prefer the one with more inferred days", () => {
+  // Two windows with 80 observed days; the later also has 5 inferred. The
+  // observed peak should be the later one, so a single peak period covers
+  // both verdicts instead of splitting into two.
+  const rule = loadRule("schengen-90-180");
+  const records = [...fillYear(2024, FR, 1, 80)];
+  for (let i = 0; i < 85; i += 1) {
+    const date = new Date(Date.UTC(2024, 0, 201 + i)).toISOString().slice(0, 10);
+    records.push(i < 80 ? observedDay(date, [FR()]) : inferredDay(date, FR()));
+  }
+  const peaks = evaluateRule(historyOf(records), rule).periods.filter((p) =>
+    p.period.startsWith("peak")
+  );
+  assert.equal(peaks.length, 1);
+  assert.equal(peaks[0]!.observedDays, 80);
+  assert.equal(peaks[0]!.totalDays, 85);
+});

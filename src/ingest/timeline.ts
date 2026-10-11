@@ -36,6 +36,7 @@ function isValidTimestamp(value: unknown): value is string {
 }
 
 const VISIT_INTERIOR_STEP_MS = 12 * 3_600_000;
+const VISIT_INTERIOR_MAX_MS = 31 * 24 * 3_600_000;
 
 export function extractObservations(exportJson: unknown): ExtractResult {
   const root = (exportJson ?? {}) as {
@@ -124,8 +125,12 @@ export function extractObservations(exportJson: unknown): ExtractResult {
         if (isValidTimestamp(segment.startTime) && isValidTimestamp(segment.endTime)) {
           const start = Date.parse(segment.startTime);
           const end = Date.parse(segment.endTime);
-          for (let t = start + VISIT_INTERIOR_STEP_MS; t < end; t += VISIT_INTERIOR_STEP_MS) {
-            add(location, new Date(t).toISOString(), "visit_interior");
+          // A "visit" of weeks usually means no data (phone off), not a
+          // stay. Those days stay inferred, with confidence graded by gap.
+          if (end - start <= VISIT_INTERIOR_MAX_MS) {
+            for (let t = start + VISIT_INTERIOR_STEP_MS; t < end; t += VISIT_INTERIOR_STEP_MS) {
+              add(location, new Date(t).toISOString(), "visit_interior");
+            }
           }
         }
       }

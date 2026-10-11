@@ -7,5 +7,5 @@
   "threshold": 183,
   "comparison": "at-least",
   "references": ["HMRC RDR3: Statutory Residence Test, first automatic UK test"],
-  "notes": "Counts days you were in the UK at the end of the day (midnight rule), grouped by UK tax year (6 April to 5 April). The Crown Dependencies (Jersey, Guernsey, Isle of Man) and Gibraltar are not part of the UK and do not count. Midnight presence is approximated by the location of the last observation of each day. Simplifications: the deeming rule, transit-day exception, exceptional-circumstances days, and the other automatic/sufficient-ties tests of the SRT are not modeled."
+  "notes": "Counts days you were in the UK at the end of the day (midnight rule), grouped by UK tax year (6 April to 5 April). The Crown Dependencies (Jersey, Guernsey, Isle of Man) and Gibraltar are not part of the UK and do not count. Known gap: the Akrotiri and Dhekelia base areas on Cyprus are inside the UK shape of the vendored border data and count as UK. Midnight presence is approximated by the location of the last observation of each day. Simplifications: the deeming rule, transit-day exception, exceptional-circumstances days, and the other automatic/sufficient-ties tests of the SRT are not modeled."
 }
