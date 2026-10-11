@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractObservations } from "../src/ingest/timeline.ts";
@@ -100,7 +100,44 @@ test("archive merge is idempotent and splits by year", () => {
     assert.equal(second.duplicates, 2);
 
     assert.equal(loadArchive(dir).length, 2);
-    assert.equal(loadArchive(dir, [2024]).length, 1);
+    // Neighbor years load too: 2023-12-31T23:00Z is already 2024 local time
+    // east of UTC, so a 2024 query must see it. The model filters exact years.
+    assert.equal(loadArchive(dir, [2024]).length, 2);
+    assert.equal(loadArchive(dir, [2026]).length, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the same instant from exports made in different zones is one observation", () => {
+  // Exports render every timestamp in the phone's zone at EXPORT time, so
+  // re-exporting from abroad re-labels old fixes. Text-keyed dedupe stored
+  // each fix again per export.
+  const dir = mkdtempSync(join(tmpdir(), "tp-archive-"));
+  try {
+    const at = (time: string) => ({ time, lat: 1, lng: 2, source: "visit_end" as const });
+    mergeIntoArchive(dir, [at("2010-11-08T20:00:00.000-04:00")]);
+    const again = mergeIntoArchive(dir, [
+      at("2010-11-09T07:00:00.000+07:00"),
+      at("2010-11-09T00:00:00.000+00:00"),
+    ]);
+    assert.equal(again.added, 0);
+    assert.equal(again.duplicates, 2);
+    assert.equal(loadArchive(dir).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("archives written with text-keyed duplicates load deduplicated", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tp-archive-"));
+  try {
+    const lines = [
+      { time: "2010-11-08T20:00:00.000-04:00", lat: 1, lng: 2, source: "visit_end" },
+      { time: "2010-11-09T07:00:00.000+07:00", lat: 1, lng: 2, source: "visit_end" },
+    ].map((o) => JSON.stringify(o));
+    writeFileSync(join(dir, "observations-2010.jsonl"), lines.join("\n") + "\n");
+    assert.equal(loadArchive(dir).length, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

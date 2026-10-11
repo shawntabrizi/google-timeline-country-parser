@@ -168,3 +168,70 @@ test("fast ground travel is not mistaken for flying", () => {
   assert.deepEqual(day.regions.map((r) => r.country), ["France"]);
   assert.equal(day.regions[0]?.observationCount, 2);
 });
+
+test("the endpoints of one fast leg are airports, not overflight", () => {
+  // Sparse raw fixes: New York late evening, London after landing. The leg
+  // between them is flight-speed, but each fix is where the person stood on
+  // the ground. Dropping them would erase a departure day and an arrival day
+  // from the presence count.
+  const model = buildPresenceModel(
+    [
+      obs("2010-11-20T23:00:00.000-05:00", LANDMARKS.nycUS, "raw_position"),
+      obs("2010-11-21T11:00:00.000+00:00", LANDMARKS.londonUK, "raw_position"),
+    ],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  assert.deepEqual(
+    model.history["2010-11-20"]!.regions.map((r) => r.country),
+    ["United States of America"]
+  );
+  assert.deepEqual(model.history["2010-11-21"]!.regions.map((r) => r.country), ["United Kingdom"]);
+});
+
+test("a stale fix that teleports away and back is still dropped", () => {
+  // Home -> 6,000 km away -> home within minutes: both legs are fast, so the
+  // middle fix is an artifact. Its region must not appear.
+  const model = buildPresenceModel(
+    [
+      obs("2010-03-14T10:00:00.000+00:00", LANDMARKS.londonUK, "raw_position"),
+      obs("2010-03-14T10:05:00.000+00:00", LANDMARKS.nycUS, "raw_position"),
+      obs("2010-03-14T10:10:00.000+00:00", LANDMARKS.londonUK, "raw_position"),
+    ],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  assert.deepEqual(model.history["2010-03-14"]!.regions.map((r) => r.country), ["United Kingdom"]);
+});
+
+test("days follow the place's local calendar, not the export's offset", () => {
+  // A 21:30 arrival in San Juan, as labeled by an export made in a +07:00 zone
+  // (+07:00 renders it as 08:30 the next morning). PR presence belongs to
+  // the PR-local date; the text date would move it a day later.
+  const model = buildPresenceModel(
+    [obs("2010-11-09T08:30:00.000+07:00", LANDMARKS.sanJuanPR)],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01" }
+  );
+  assert.equal(model.history["2010-11-08"]!.status, "observed");
+  assert.equal(model.history["2010-11-09"]!.status, "unknown");
+
+  // The UTC boundary (used only for sensitivity checks) puts it on the 26th.
+  const utc = buildPresenceModel(
+    [obs("2010-11-09T08:30:00.000+07:00", LANDMARKS.sanJuanPR)],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2025-01-01", dayBoundary: "utc" }
+  );
+  assert.equal(utc.history["2010-11-09"]!.status, "observed");
+});
+
+test("a local New Year's Eve stays in the old year", () => {
+  // 22:00 on Dec 31 in San Juan is already Jan 1 in UTC and in most export
+  // zones; the year filter must apply to the local date.
+  const model = buildPresenceModel(
+    [obs("2011-01-01T02:00:00.000+00:00", LANDMARKS.sanJuanPR)],
+    resolve,
+    { years: [2010], fillMissingDays: false, todayKey: "2011-06-01" }
+  );
+  assert.equal(model.history["2010-12-31"]!.status, "observed");
+});

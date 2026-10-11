@@ -39,6 +39,8 @@ export interface RegionResolution {
   country: string;
   /** ISO 3166-1 alpha-3 codes for all matching regions, least specific first. */
   codes: string[];
+  /** IANA zone of the point, used to derive its local calendar day. */
+  timeZone?: string;
 }
 
 /** Presence of one region within one day. */
@@ -58,7 +60,7 @@ export type InferenceKind = "interpolate_between" | "carry_forward" | "carry_bac
 export type InferenceConfidence = "high" | "medium" | "low";
 
 export interface DayRecord {
-  date: string; // YYYY-MM-DD (local day where the observations were recorded)
+  date: string; // YYYY-MM-DD, local calendar day in the zone of each observed place
   status: DayStatus;
   /** All regions touched this day. Empty when status is "unknown". */
   regions: DayRegionPresence[];
@@ -137,6 +139,19 @@ export interface PeriodResult {
   satisfiedWithInferred: boolean;
   /** Days in the period with no data at all (coverage gap warning). */
   unknownDays: number;
+  /** Days of the period not in the loaded history (not yet elapsed, or not loaded). */
+  missingDays?: number;
+  /**
+   * Same rule evaluated with UTC day boundaries instead of local days. Set
+   * only when the two disagree on which days count: those dates hinge on
+   * the day boundary and deserve independent evidence (boarding passes).
+   */
+  boundary?: {
+    observedDays: number;
+    satisfiedObserved: boolean;
+    /** Dates counted in exactly one of the two boundaries. */
+    dates: string[];
+  };
   /**
    * Set when the period's formula reaches outside the loaded data (e.g. a
    * 3-year test evaluated with prior years excluded by --years, or a rolling

@@ -16,15 +16,6 @@ export function isValidDayKey(key: string): boolean {
   return new Date(epoch).toISOString().slice(0, 10) === key;
 }
 
-/**
- * The local calendar day of an ISO timestamp, using the offset embedded in
- * the timestamp itself — i.e. the day it was where the record was made.
- */
-export function dayKeyOfTimestamp(timestamp: string): string | null {
-  const key = timestamp.slice(0, 10);
-  return isValidDayKey(key) ? key : null;
-}
-
 /** Today's date in this machine's local timezone. */
 export function todayKeyLocal(): string {
   const now = new Date();

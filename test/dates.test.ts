@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  dayKeyOfTimestamp,
   dayKeysForYear,
   isValidDayKey,
   splitIntoContiguousRuns,
@@ -12,11 +11,6 @@ test("impossible dates are rejected, not normalized", () => {
   assert.equal(isValidDayKey("2024-02-29"), true); // leap
   assert.equal(isValidDayKey("2023-02-29"), false);
   assert.equal(isValidDayKey("2024-13-45"), false);
-  assert.equal(dayKeyOfTimestamp("2024-13-45T00:00:00Z"), null);
-});
-
-test("day key uses the timestamp's own offset (the local day)", () => {
-  assert.equal(dayKeyOfTimestamp("2024-03-01T23:30:00.000-04:00"), "2024-03-01");
 });
 
 test("year day keys handle leap years", () => {

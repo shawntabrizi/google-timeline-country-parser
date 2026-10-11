@@ -13,7 +13,6 @@
 
 import {
   addDays,
-  dayKeyOfTimestamp,
   dayKeysForYear,
   splitIntoContiguousRuns,
   todayKeyLocal,
@@ -27,6 +26,7 @@ import type {
   RegionResolution,
 } from "../types.ts";
 import type { Resolver } from "../geo/resolver.ts";
+import { localDayKey, longitudeZone, utcDayKey } from "../geo/timezone.ts";
 
 export interface BuildOptions {
   /** Years to include. Defaults to every year with at least one observation. */
@@ -37,6 +37,12 @@ export interface BuildOptions {
   maxInferGapDays?: number;
   /** Today override for tests. */
   todayKey?: string;
+  /**
+   * How an instant maps to a calendar day. "local" (default): the date in
+   * the zone of the observed place — what presence tests and evidence use.
+   * "utc": only for boundary-sensitivity checks.
+   */
+  dayBoundary?: "local" | "utc";
 }
 
 export interface BuildStats {
@@ -116,17 +122,24 @@ function tagAirborne(observations: Observation[]): TaggedObservation[] {
     .filter((t) => Number.isFinite(t.epoch))
     .sort((a, b) => a.epoch - b.epoch);
 
+  // A fix is airborne only when BOTH its incoming and outgoing legs are fast:
+  // it sits in the middle of flight-speed motion (an in-flight fix, or a
+  // stale fix that teleports away and back). The endpoints of a single fast
+  // leg are where you were on the ground — departure and arrival airports —
+  // and marking them would erase real presence on travel days.
+  const fastLeg: boolean[] = [];
   for (let i = 1; i < tagged.length; i += 1) {
     const prev = tagged[i - 1]!;
     const current = tagged[i]!;
     const hours = (current.epoch - prev.epoch) / 3_600_000;
-    if (hours <= 0) {
-      continue;
-    }
     const km = haversineKm(prev.observation, current.observation);
-    if (km >= AIRBORNE_MIN_LEG_KM && km / hours >= AIRBORNE_MIN_KMH) {
-      prev.airborne = true;
-      current.airborne = true;
+    fastLeg.push(
+      hours > 0 && km >= AIRBORNE_MIN_LEG_KM && km / hours >= AIRBORNE_MIN_KMH
+    );
+  }
+  for (let i = 1; i < tagged.length - 1; i += 1) {
+    if (fastLeg[i - 1] && fastLeg[i]) {
+      tagged[i]!.airborne = true;
     }
   }
   return tagged;
@@ -146,6 +159,7 @@ export function buildPresenceModel(
   const fillMissingDays = options.fillMissingDays !== false;
   const maxInferGapDays = options.maxInferGapDays ?? 7;
   const today = options.todayKey ?? todayKeyLocal();
+  const utcBoundary = options.dayBoundary === "utc";
 
   // --- Group observations into days, resolving regions. ---
   const accumulators = new Map<string, DayAccumulator>();
@@ -154,8 +168,13 @@ export function buildPresenceModel(
   const yearFilter = options.years ? new Set(options.years.map(String)) : null;
 
   for (const { observation, epoch, airborne } of tagAirborne(observations)) {
-    const day = dayKeyOfTimestamp(observation.time);
-    if (!day || day > today) {
+    const resolution = resolve(observation.lat, observation.lng);
+    // The timestamp's own offset is the phone's zone at EXPORT time, not the
+    // zone of the place; only the instant is trusted (see geo/timezone.ts).
+    const day = utcBoundary
+      ? utcDayKey(epoch)
+      : localDayKey(epoch, resolution.timeZone ?? longitudeZone(observation.lng));
+    if (day > today) {
       outOfScope += 1;
       continue;
     }
@@ -164,7 +183,6 @@ export function buildPresenceModel(
       continue;
     }
 
-    const resolution = resolve(observation.lat, observation.lng);
     const key = regionKey(resolution);
 
     let accumulator = accumulators.get(day);

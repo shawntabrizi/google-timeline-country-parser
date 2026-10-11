@@ -89,9 +89,11 @@ Per-day records retain enough structure for any rule semantics:
 - first/last observation per region,
 - observation counts and sources (evidence density).
 
-Day boundaries use the local UTC offset embedded in each Google timestamp (the
-local day where you physically were). Validated against real travel days before
-being trusted.
+Day boundaries are the local calendar date in the time zone of each observed
+place (vendored IANA zone.tab; see `src/geo/timezone.ts`). *Superseded:* this
+section originally used the UTC offset embedded in each timestamp, but exports
+render every timestamp in the phone's zone at export time, so that offset says
+where the phone was when exporting, not where the fix was made.
 
 **Confidence tiers** — every day is one of:
 

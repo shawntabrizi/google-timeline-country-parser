@@ -13,12 +13,16 @@
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { dayKeyOfTimestamp } from "../dates.ts";
 import type { Observation } from "../types.ts";
 
+/**
+ * Keyed by the instant, not the timestamp text: each export renders times in
+ * the phone's zone at export time, so the same fix arrives as
+ * "...T10:00+07:00" in one export and "...T03:00+00:00" in the next.
+ */
 function dedupeKey(observation: Observation): string {
   return [
-    observation.time,
+    Date.parse(observation.time),
     observation.lat.toFixed(5),
     observation.lng.toFixed(5),
     observation.source,
@@ -39,7 +43,7 @@ export function mergeIntoArchive(dir: string, observations: Observation[]): Merg
   mkdirSync(dir, { recursive: true });
 
   const existing = new Set<string>();
-  for (const stored of loadArchive(dir)) {
+  for (const stored of readArchive(dir)) {
     existing.add(dedupeKey(stored));
   }
 
@@ -47,8 +51,8 @@ export function mergeIntoArchive(dir: string, observations: Observation[]): Merg
   const result: MergeResult = { added: 0, duplicates: 0, invalid: 0 };
 
   for (const observation of observations) {
-    const day = dayKeyOfTimestamp(observation.time);
-    if (!day) {
+    const epoch = Date.parse(observation.time);
+    if (!Number.isFinite(epoch)) {
       result.invalid += 1;
       continue;
     }
@@ -59,7 +63,8 @@ export function mergeIntoArchive(dir: string, observations: Observation[]): Merg
     }
     existing.add(key);
     result.added += 1;
-    const year = day.slice(0, 4);
+    // Files are bucketed by UTC year; loaders read neighbor years too.
+    const year = new Date(epoch).toISOString().slice(0, 4);
     const lines = byYear.get(year) ?? [];
     lines.push(JSON.stringify(observation));
     byYear.set(year, lines);
@@ -72,7 +77,27 @@ export function mergeIntoArchive(dir: string, observations: Observation[]): Merg
   return result;
 }
 
+/**
+ * Observations for the given years (all when omitted), deduplicated by
+ * instant. Neighbor-year files are included because a file's year is not the
+ * local calendar year of every fix in it (archives written by older versions
+ * bucketed by export-zone text; new writes bucket by UTC). The presence model
+ * applies the exact year filter after deriving local days.
+ */
 export function loadArchive(dir: string, years?: number[]): Observation[] {
+  const expanded = years?.flatMap((year) => [year - 1, year, year + 1]);
+  const seen = new Set<string>();
+  return readArchive(dir, expanded).filter((observation) => {
+    const key = dedupeKey(observation);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function readArchive(dir: string, years?: number[]): Observation[] {
   if (!existsSync(dir)) {
     return [];
   }

@@ -64,6 +64,14 @@ status:
 - **unknown** — no data, no safe inference; never counts toward any test
 
 Rule checks always report *observed* and *with inferred* separately.
+
+A day is the **local calendar date of the place** you were. Google writes every
+timestamp in your phone's time zone at *export* time, so the tool ignores that
+offset and uses only the instant, then takes the date in the place's own time
+zone (vendored IANA `zone.tab`). `check` also re-counts with UTC days and lists
+any dates that differ — those days hinge on a late-evening crossing and deserve
+independent evidence (boarding passes). A period still in progress, or with
+unknown days that could change the result, shows **INCOMPLETE** instead of FAIL.
 Coordinates resolve against vendored offline boundary data; territories stay
 distinct from their owners on purpose — Puerto Rico days are not "US days"
 (Act 60 needs them separate, and the Substantial Presence Test excludes them).
@@ -85,8 +93,9 @@ validated on load; add your own or contribute one with test vectors.
 ## Privacy
 
 - All processing is local; the tool makes no network requests of any kind.
-- `.gitignore` denies all JSON by default; your exports, archive, and reports
-  can't be committed by accident.
+- `.gitignore` denies all JSON, JSONL, HTML, CSV, GPX, KML and ZIP files by
+  default, so exports, archives and reports in the usual formats are not
+  committed by accident. Check `git status` before committing anything else.
 - The HTML report embeds your history — share it as deliberately as the data.
 
 ## Development
